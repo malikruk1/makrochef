@@ -66,6 +66,86 @@ public static class StubTools
 
     [McpServerTool(Name = "get_similar_products"), Description("Stub fixture for gate 6.2.")]
     public static string GetSimilarProducts(string productId) => CatalogFixture.SimilarProducts(productId);
+
+    [McpServerTool(Name = "get_replacements"), Description("Stub fixture for gate 7.2.")]
+    public static string GetReplacements(string productId) => productId switch
+    {
+        "test_cheese" => """[{"productId":"cheese_b"}]""",
+        _ => "[]",
+    };
+
+    [McpServerTool(Name = "clear_shopping_cart"), Description("Stub cart for gate 7.")]
+    public static string ClearShoppingCart()
+    {
+        StubCartState.Lines.Clear();
+        return """{"success":true}""";
+    }
+
+    [McpServerTool(Name = "add_or_update_cart_products"), Description("Stub cart for gate 7.")]
+    public static string AddOrUpdateCartProducts(System.Text.Json.JsonElement items)
+    {
+        foreach (var item in items.EnumerateArray())
+        {
+            var productId = item.GetProperty("productId").GetString()!;
+            var quantity = item.TryGetProperty("quantity", out var q) ? q.GetInt32() : 1;
+            StubCartState.Lines[productId] = quantity;
+        }
+
+        return """{"success":true}""";
+    }
+
+    [McpServerTool(Name = "remove_cart_products"), Description("Stub cart for gate 7.")]
+    public static string RemoveCartProducts(string[] productIds)
+    {
+        foreach (var id in productIds)
+        {
+            StubCartState.Lines.Remove(id);
+        }
+
+        return """{"success":true}""";
+    }
+
+    [McpServerTool(Name = "get_shopping_cart_by_id"), Description("Stub cart for gate 7.")]
+    public static string GetShoppingCartById()
+    {
+        var items = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}}}""");
+        var validations = StubCartState.Lines.Keys
+            .Where(id => StubCartState.OutOfStock.Contains(id))
+            .Select(id => $$"""{"productId":"{{id}}","reason":"out of stock"}""");
+
+        var links = StubCartState.CheckoutReady
+            ? ",\"checkoutWebLink\":\"https://silpo.ua/checkout/abc\",\"checkoutMobileLink\":\"silpo://checkout/abc\""
+            : "";
+
+        return $$"""{"items":[{{string.Join(",", items)}}],"validations":[{{string.Join(",", validations)}}],"totalAmount":0{{links}}}""";
+    }
+
+    [McpServerTool(Name = "get_my_premium_subscription"), Description("Stub fixture for gate 7.3.")]
+    public static string GetMyPremiumSubscription() => """{"isPremium":false}""";
+
+    [McpServerTool(Name = "get_my_certificates"), Description("Stub fixture for gate 7.3.")]
+    public static string GetMyCertificates() => """[{"certificateId":"cert-1"}]""";
+
+    [McpServerTool(Name = "add_or_update_certificates"), Description("Stub cart for gate 7.3.")]
+    public static string AddOrUpdateCertificates() { StubCartState.CheckoutReady = true; return """{"success":true}"""; }
+
+    [McpServerTool(Name = "get_promo_codes"), Description("Stub fixture for gate 7.3.")]
+    public static string GetPromoCodes() => """[{"code":"SAVE5","discountAmount":5},{"code":"SAVE20","discountAmount":20}]""";
+
+    [McpServerTool(Name = "update_shopping_cart"), Description("Stub cart for gate 7.3.")]
+    public static string UpdateShoppingCart() => """{"success":true}""";
+}
+
+/// <summary>In-memory cart for gate 7 tests (7.1/7.2). Reset per test via <see cref="Lines"/>
+/// and <see cref="OutOfStock"/> since it's static, shared MCP-server-wide state.</summary>
+public static class StubCartState
+{
+    public static readonly Dictionary<string, int> Lines = new();
+    public static readonly HashSet<string> OutOfStock = new();
+
+    /// <summary>Flips true once add_or_update_certificates runs, so get_shopping_cart_by_id's
+    /// checkout links only appear at the end of the 7.3 cascade, not before.</summary>
+    public static bool CheckoutReady;
 }
 
 /// <summary>Catalog fixture for gate 6 (candidate pool + swaps). Prices in currency units
