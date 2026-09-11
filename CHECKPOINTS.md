@@ -9,7 +9,8 @@
 | 5.1   | DONE   | ✅ 5/5 тестів | a0552e1 | CP-SAT, релаксація sugar→kcal→budget+10%, 300 кандидатів <2с |
 | 5.2   | DONE   | ✅ | a0552e1 | вбудовано в 5.1 |
 | 8.1   | DONE   | ✅ 13/13 тестів | c38590b | 2 hex змінено відносно спеки 10.1 — див. технічний борг |
-| 3.1   | TODO   | | | наступний за порядком 10.2 — MCP-клієнт на stub |
+| 3.1   | DONE   | ✅ 14/14 тестів | 4f48b16 | Обрано офіційний SDK `ModelContextProtocol` 2.2.0 (не власний клієнт) — HttpClientTransport + кастомний HttpClient/DelegatingHandler покриває Streamable HTTP і auth. Gate: in-process stub-сервер (реальний SDK, не мок) підтверджує tools/list + запис у McpCalls |
+| 3.2   | TODO   | | | OAuth 2.1 + PKCE, 🔒 B-1/B-2 — код повний, live-прогін чекає блокер |
 
 ## Потрібно від розробника
 - Запустити Docker Desktop, щоб прогнати `docker compose up -d && ./scripts/gate.sh 2.3` наживо (перевірка `/health`).

@@ -5,6 +5,7 @@
     <ProjectReference Include="..\MakroChef.Domain\MakroChef.Domain.csproj" />
     <ProjectReference Include="..\MakroChef.Nutrition\MakroChef.Nutrition.csproj" />
     <ProjectReference Include="..\MakroChef.Solver\MakroChef.Solver.csproj" />
+    <ProjectReference Include="..\MakroChef.Data\MakroChef.Data.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

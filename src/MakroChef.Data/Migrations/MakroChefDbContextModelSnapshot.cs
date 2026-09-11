@@ -62,6 +62,10 @@ namespace MakroChef.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<byte[]>("AccessTokenNonce")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -76,7 +80,7 @@ namespace MakroChef.Data.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<byte[]>("Nonce")
+                    b.Property<byte[]>("RefreshTokenNonce")
                         .IsRequired()
                         .HasColumnType("bytea");
 

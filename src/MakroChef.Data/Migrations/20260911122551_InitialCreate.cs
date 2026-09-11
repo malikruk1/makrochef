@@ -35,8 +35,9 @@ namespace MakroChef.Data.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
                     EncryptedAccessToken = table.Column<byte[]>(type: "bytea", nullable: false),
+                    AccessTokenNonce = table.Column<byte[]>(type: "bytea", nullable: false),
                     EncryptedRefreshToken = table.Column<byte[]>(type: "bytea", nullable: false),
-                    Nonce = table.Column<byte[]>(type: "bytea", nullable: false),
+                    RefreshTokenNonce = table.Column<byte[]>(type: "bytea", nullable: false),
                     ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },

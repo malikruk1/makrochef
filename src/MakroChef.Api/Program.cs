@@ -1,6 +1,13 @@
+using MakroChef.Api.Commands;
 using MakroChef.Data;
 using MakroChef.Solver;
 using Microsoft.EntityFrameworkCore;
+
+if (args is ["auth"])
+{
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    return await AuthCommand.RunAsync(mcpBaseUri);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,5 +55,6 @@ app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 });
 
 app.Run();
+return 0;
 
 public partial class Program;

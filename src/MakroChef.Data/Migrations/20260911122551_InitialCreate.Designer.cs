@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MakroChef.Data.Migrations
 {
     [DbContext(typeof(MakroChefDbContext))]
-    [Migration("20260911120532_InitialCreate")]
+    [Migration("20260911122551_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -65,6 +65,10 @@ namespace MakroChef.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<byte[]>("AccessTokenNonce")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -79,7 +83,7 @@ namespace MakroChef.Data.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<byte[]>("Nonce")
+                    b.Property<byte[]>("RefreshTokenNonce")
                         .IsRequired()
                         .HasColumnType("bytea");
 
