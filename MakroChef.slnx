@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MakroChef.Agent/MakroChef.Agent.csproj" />
+    <Project Path="src/MakroChef.Api/MakroChef.Api.csproj" />
+    <Project Path="src/MakroChef.Data/MakroChef.Data.csproj" />
+    <Project Path="src/MakroChef.Domain/MakroChef.Domain.csproj" />
+    <Project Path="src/MakroChef.Mcp/MakroChef.Mcp.csproj" />
+    <Project Path="src/MakroChef.Nutrition/MakroChef.Nutrition.csproj" />
+    <Project Path="src/MakroChef.Solver/MakroChef.Solver.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MakroChef.Tests/MakroChef.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MakroChef.Mcp\MakroChef.Mcp.csproj" />
+    <ProjectReference Include="..\MakroChef.Domain\MakroChef.Domain.csproj" />
+    <ProjectReference Include="..\MakroChef.Nutrition\MakroChef.Nutrition.csproj" />
+    <ProjectReference Include="..\MakroChef.Solver\MakroChef.Solver.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
