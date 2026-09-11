@@ -5,6 +5,7 @@ using System.Text.Json;
 using MakroChef.Domain.Mcp;
 using MakroChef.Mcp.OAuth;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace MakroChef.Mcp;
 
@@ -46,7 +47,7 @@ public class MakroChefMcpClient : IMakroChefMcpClient
         {
             var client = await _client.Value;
             var result = await client.CallToolAsync(toolName, arguments, cancellationToken: cancellationToken);
-            return JsonSerializer.Serialize(result.Content);
+            return ExtractText(result.Content);
         });
     }
 
@@ -74,6 +75,12 @@ public class MakroChefMcpClient : IMakroChefMcpClient
                 SessionId: _sessionId));
         }
     }
+
+    /// <summary>Tool results come back as a list of content blocks (text, image, ...); MCP tool
+    /// responses we care about are JSON encoded as text blocks, so concatenate those and hand
+    /// back plain text/JSON rather than the SDK's wrapper shape.</summary>
+    private static string ExtractText(IList<ContentBlock> content) =>
+        string.Concat(content.OfType<TextContentBlock>().Select(t => t.Text));
 
     /// <summary>Hash, never log raw args — they can carry addresses, phone numbers, etc.</summary>
     private static string HashArgs(IReadOnlyDictionary<string, object?>? args)
