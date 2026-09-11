@@ -31,7 +31,7 @@ public static class ProbeCommand
             Console.WriteLine("Читаю історію покупок і деталі товарів (це не миттєво — кожен унікальний SKU це окремий виклик)...");
             var report = await new CoverageProbe(mcpClient).RunAsync();
 
-            var reportPath = Path.Combine(FindRepoRoot(), "docs", "coverage-report.md");
+            var reportPath = Path.Combine(RepoPaths.FindRoot(), "docs", "coverage-report.md");
             Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
             await File.WriteAllTextAsync(reportPath, report.ToMarkdown());
 
@@ -45,17 +45,6 @@ public static class ProbeCommand
             Console.Error.WriteLine($"Проба покриття не вдалась: {ex.Message}");
             return 1;
         }
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "MakroChef.slnx")))
-        {
-            dir = dir.Parent;
-        }
-
-        return dir?.FullName ?? Directory.GetCurrentDirectory();
     }
 
     private class StaticTokenProvider(string token) : IMcpAuthTokenProvider

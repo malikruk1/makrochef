@@ -49,6 +49,19 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+var webDir = Path.Combine(MakroChef.Api.RepoPaths.FindRoot(), "web");
+if (Directory.Exists(webDir))
+{
+    app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(webDir),
+        RequestPath = "/web",
+    });
+}
+
+app.MapGet("/api/trace/{sessionId:guid}", async (Guid sessionId, MakroChefDbContext db) =>
+    Results.Ok(await MakroChef.Api.TraceQuery.GetCallsAsync(db, sessionId)));
+
 app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 {
     string dbStatus;

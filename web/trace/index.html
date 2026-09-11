@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="uk" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>MakroChef — трейс-панель</title>
+<link rel="stylesheet" href="../tokens/tokens.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+  }
+  header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-card);
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0 0 4px;
+  }
+  header .meta {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-card);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+  }
+  td {
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border-card);
+    white-space: nowrap;
+  }
+  tr.status-error td { color: var(--accent-text); }
+  tr.status-out-of-stock td { background: var(--accent-plate); color: var(--on-plate); font-weight: 500; }
+  tr.solver-repeat td { background: var(--accent-plate); color: var(--on-plate); font-weight: 500; }
+  .empty {
+    padding: 32px 16px;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>MakroChef — трейс MCP-викликів</h1>
+  <div class="meta" id="meta">сесія: —</div>
+</header>
+<table>
+  <thead>
+    <tr><th>час</th><th>tool</th><th>args_hash</th><th>статус</th><th>тривалість</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+<div class="empty" id="empty" hidden>Викликів ще немає.</div>
+
+<script>
+  const sessionId = new URLSearchParams(location.search).get("sessionId");
+  document.getElementById("meta").textContent = "сесія: " + (sessionId ?? "не вказано");
+
+  async function poll() {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/api/trace/${sessionId}`);
+      if (!res.ok) return;
+      const calls = await res.json();
+      render(calls);
+    } catch {
+      // transient network hiccup during polling — next tick will retry, no need to surface it
+    }
+  }
+
+  function render(calls) {
+    const rows = document.getElementById("rows");
+    const empty = document.getElementById("empty");
+    empty.hidden = calls.length > 0;
+
+    let solverSeen = false;
+    rows.innerHTML = calls.map(c => {
+      const isSolver = c.tool === "solver.solve";
+      const isRepeatSolver = isSolver && solverSeen;
+      if (isSolver) solverSeen = true;
+
+      const isOutOfStock = /out.?of.?stock/i.test(c.status);
+      const cls = isRepeatSolver ? "solver-repeat" : isOutOfStock ? "status-out-of-stock" : c.status === "error" ? "status-error" : "";
+
+      return `<tr class="${cls}">
+        <td>${new Date(c.createdAt).toLocaleTimeString("uk-UA")}</td>
+        <td>${escapeHtml(c.tool)}</td>
+        <td>${escapeHtml(c.argsHash)}</td>
+        <td>${escapeHtml(c.status)}</td>
+        <td>${c.durationMs} ms</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  }
+
+  poll();
+  setInterval(poll, 1500);
+</script>
+</body>
+</html>
