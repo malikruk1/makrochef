@@ -14,10 +14,15 @@ public static class StubTools
     [McpServerTool(Name = "silpo_ping"), Description("Stub tool for gate 3.1 tests.")]
     public static string Ping(string message) => $"pong:{message}";
 
-    [McpServerTool(Name = "get_product_details"), Description("Stub tool for gate 3.3/3.4 tests.")]
+    [McpServerTool(Name = "get_product_details"), Description("Stub tool for gate 3.3/3.4/6 tests.")]
     public static string GetProductDetails(string productId)
     {
         Interlocked.Increment(ref GetProductDetailsCallCount);
+
+        if (CatalogFixture.ProductDetailsByAndId.TryGetValue(productId, out var fixture))
+        {
+            return fixture;
+        }
 
         // Deterministic fixture for gate 3.4: "gapN" products simulate a category with
         // systematically incomplete nutrient data (e.g. weighed goods), everything else
@@ -28,7 +33,7 @@ public static class StubTools
         }
 
         return $$"""
-            {"productId":"{{productId}}","category":"молочні","proteinPer100g":10,"fatPer100g":5,"carbsPer100g":12,"sugarPer100g":6}
+            {"productId":"{{productId}}","category":"молочні","price":25,"proteinPer100g":10,"fatPer100g":5,"carbsPer100g":12,"sugarPer100g":6}
             """;
     }
 
@@ -52,6 +57,62 @@ public static class StubTools
 
     [McpServerTool(Name = "get_loyalty_info"), Description("Stub fixture for gate 4.1.")]
     public static string GetLoyaltyInfo() => """{"bonusBalance":275.5}""";
+
+    [McpServerTool(Name = "find_products_batch"), Description("Stub fixture for gate 6.1.")]
+    public static string FindProductsBatch() => CatalogFixture.SeedProductsJson;
+
+    [McpServerTool(Name = "get_products"), Description("Stub fixture for gate 6.1.")]
+    public static string GetProducts(string category) => CatalogFixture.ProductsByCategory(category);
+
+    [McpServerTool(Name = "get_similar_products"), Description("Stub fixture for gate 6.2.")]
+    public static string GetSimilarProducts(string productId) => CatalogFixture.SimilarProducts(productId);
+}
+
+/// <summary>Catalog fixture for gate 6 (candidate pool + swaps). Prices in currency units
+/// (parsed as kopecks by ProductDetailsParser), nutrients in grams per 100g.</summary>
+public static class CatalogFixture
+{
+    public const string SeedProductsJson = """[{"productId":"yogurt_x"},{"productId":"cheese_a"}]""";
+
+    public static string ProductsByCategory(string category) => category switch
+    {
+        "сир" => """[{"productId":"cheese_a"},{"productId":"cheese_b"}]""",
+        "риба" => """[{"productId":"fish_a"}]""",
+        "яйця" => """[{"productId":"eggs_a"}]""",
+        _ => "[]",
+    };
+
+    public static string SimilarProducts(string productId) => productId switch
+    {
+        "yogurt_x" => """[{"productId":"yogurt_y"},{"productId":"yogurt_z"}]""",
+        "bread_x" => """[{"productId":"bread_y"}]""",
+        "milk_x" => """[{"productId":"milk_y"}]""",
+        "juice_x" => """[{"productId":"juice_y"}]""",
+        "cereal_x" => """[{"productId":"cereal_y"}]""",
+        _ => "[]",
+    };
+
+    /// <summary>get_product_details fixtures for gate 6: five "_x -> _y" pairs are a real
+    /// improvement (more protein or less sugar, cheaper), "_z" is worse both ways so the swap
+    /// generator must reject it.</summary>
+    public static readonly Dictionary<string, string> ProductDetailsByAndId = new()
+    {
+        ["yogurt_x"] = """{"category":"молочні","price":30,"proteinPer100g":4,"sugarPer100g":12}""",
+        ["yogurt_y"] = """{"category":"молочні","price":27,"proteinPer100g":6,"sugarPer100g":8}""",
+        ["yogurt_z"] = """{"category":"молочні","price":32,"proteinPer100g":3,"sugarPer100g":15}""",
+        ["bread_x"] = """{"category":"випічка","price":25,"proteinPer100g":8,"sugarPer100g":5}""",
+        ["bread_y"] = """{"category":"випічка","price":24,"proteinPer100g":9,"sugarPer100g":4}""",
+        ["milk_x"] = """{"category":"молочні","price":20,"proteinPer100g":3,"sugarPer100g":5}""",
+        ["milk_y"] = """{"category":"молочні","price":19,"proteinPer100g":3.5,"sugarPer100g":4}""",
+        ["juice_x"] = """{"category":"напої","price":35,"proteinPer100g":0,"sugarPer100g":20}""",
+        ["juice_y"] = """{"category":"напої","price":34,"proteinPer100g":0.5,"sugarPer100g":15}""",
+        ["cereal_x"] = """{"category":"крупи","price":40,"proteinPer100g":8,"sugarPer100g":10}""",
+        ["cereal_y"] = """{"category":"крупи","price":38,"proteinPer100g":10,"sugarPer100g":6}""",
+        ["cheese_a"] = """{"category":"сир","price":80,"proteinPer100g":25,"sugarPer100g":1,"weightGrams":200}""",
+        ["cheese_b"] = """{"category":"сир","price":75,"proteinPer100g":22,"sugarPer100g":1,"weightGrams":200}""",
+        ["fish_a"] = """{"category":"риба","price":120,"proteinPer100g":20,"sugarPer100g":0,"weightGrams":300}""",
+        ["eggs_a"] = """{"category":"яйця","price":45,"proteinPer100g":13,"sugarPer100g":0.5,"weightGrams":600}""",
+    };
 }
 
 /// <summary>20-SKU fixture for gate 3.4 (15 complete + 5 "gap" products), split across two
