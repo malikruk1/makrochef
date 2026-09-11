@@ -1,0 +1,40 @@
+/* Design tokens. The ONLY file allowed to contain hardcoded hex colors —
+   see TASKS.md 8.1 gate: components must reference these variables, never hex. */
+:root {
+  --bg: #FBF7F0;
+  --card: #FFFFFF;
+  --border-card: #F0E9DC;
+  --border-screen: #EAE3D6;
+  --text: #2A2622;
+  --text-2: #7A756C;
+  --text-muted: #6E675C;
+  --text-compare: #756C5B; /* darkened from spec's #8A8172 (3.6-3.84:1) to meet WCAG AA 4.5:1 — see CHECKPOINTS.md */
+  --accent: #FF6B1A;
+  --accent-soft: #F2A03D;
+  --accent-text: #C4551A;
+  --accent-plate: #FBEBD6;
+  --on-plate: #85662E;
+  --success: #3B6D11;
+
+  --r-card: 12px;
+  --r-btn: 12px;
+  --r-pill: 20px;
+  --h-btn: 46px;
+}
+
+/* Dark theme — trace panel only (TASKS.md 10.1). */
+[data-theme="dark"] {
+  --bg: #16130E;
+  --card: #201B14;
+  --border-card: #2E2820;
+  --border-screen: #2E2820;
+  --text: #F2EDE4;
+  --text-2: #A79E90;
+  --text-muted: #8E8478; /* lightened from spec's #8A8172 (4.45:1 on --card) to meet WCAG AA 4.5:1 */
+  --text-compare: #A69C89; /* lightened from spec's #6E665A (3.0-3.27:1) to meet WCAG AA 4.5:1 — see CHECKPOINTS.md */
+  --accent: #FF6B1A;
+  --accent-text: #FF8A4C;
+  --accent-plate: #3A2A15;
+  --on-plate: #FFC98A;
+  --success: #A4D96B;
+}
