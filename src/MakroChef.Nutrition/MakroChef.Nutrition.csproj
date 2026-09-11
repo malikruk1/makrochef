@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MakroChef.Domain\MakroChef.Domain.csproj" />
+    <ProjectReference Include="..\MakroChef.Mcp\MakroChef.Mcp.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
