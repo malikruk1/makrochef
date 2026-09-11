@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MakroChef</title>
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+
+<!-- Dev-only controls: NOT part of the real Mini App chrome, just so all 6 screens and their
+     3 data states (empty/loading/error) can be checked locally without a live account
+     (TASKS.md 8.2 gate). Telegram itself picks the one real screen at a time. -->
+<div class="dev-nav" id="devNav"></div>
+<div class="dev-state-switch" id="devStateSwitch"></div>
+
+<div class="phone">
+  <section class="screen" id="screen-1" data-title="1. Підключення"></section>
+  <section class="screen" id="screen-2" data-title="2. Профіль" hidden></section>
+  <section class="screen" id="screen-3" data-title="3. Кошик" hidden></section>
+  <section class="screen" id="screen-4" data-title="4. Переоптимізація" hidden></section>
+  <section class="screen" id="screen-5" data-title="5. Checkout" hidden></section>
+  <section class="screen" id="screen-6" data-title="6. Тиждень-до-тижня" hidden></section>
+</div>
+
+<script src="mocks.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
