@@ -6,11 +6,19 @@ namespace MakroChef.Mcp;
 public interface IMcpAuthTokenProvider
 {
     Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Called on a hard 401 from the server (not just "close to expiry") — forces a
+    /// refresh regardless of the cached token's apparent validity. Returns the new token, or
+    /// null if refresh isn't possible (no refresh token, refresh itself failed).</summary>
+    Task<string?> ForceRefreshAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Used where no auth is configured yet (local dev, stub-server tests).</summary>
 public class NullMcpAuthTokenProvider : IMcpAuthTokenProvider
 {
     public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
+
+    public Task<string?> ForceRefreshAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<string?>(null);
 }

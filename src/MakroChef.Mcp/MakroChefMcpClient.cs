@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MakroChef.Domain.Mcp;
+using MakroChef.Mcp.OAuth;
 using ModelContextProtocol.Client;
 
 namespace MakroChef.Mcp;
@@ -17,12 +18,12 @@ public class MakroChefMcpClient : IMakroChefMcpClient
     {
         _callRecorder = callRecorder;
         _sessionId = sessionId;
-        _client = new Lazy<Task<McpClient>>(() => CreateClientAsync(endpoint, tokenProvider));
+        _client = new Lazy<Task<McpClient>>(() => CreateClientAsync(endpoint, tokenProvider, sessionId));
     }
 
-    private static async Task<McpClient> CreateClientAsync(Uri endpoint, IMcpAuthTokenProvider tokenProvider)
+    private static async Task<McpClient> CreateClientAsync(Uri endpoint, IMcpAuthTokenProvider tokenProvider, Guid? sessionId)
     {
-        var httpClient = new HttpClient(new BearerTokenHandler(tokenProvider));
+        var httpClient = new HttpClient(new ResilientMcpHandler(tokenProvider, sessionId?.ToString()));
         var transport = new HttpClientTransport(new HttpClientTransportOptions { Endpoint = endpoint }, httpClient);
         return await McpClient.CreateAsync(transport);
     }

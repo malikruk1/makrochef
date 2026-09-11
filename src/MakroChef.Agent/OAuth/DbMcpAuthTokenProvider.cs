@@ -32,6 +32,12 @@ public class DbMcpAuthTokenProvider(
         return await RefreshAsync(stored, cancellationToken);
     }
 
+    public async Task<string?> ForceRefreshAsync(CancellationToken cancellationToken = default)
+    {
+        var stored = await tokenStore.FindByUserAsync(userId, cancellationToken);
+        return stored is null ? null : await RefreshAsync(stored, cancellationToken);
+    }
+
     private async Task<string> RefreshAsync(McpToken stored, CancellationToken cancellationToken)
     {
         var refreshToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedRefreshToken, stored.RefreshTokenNonce));
