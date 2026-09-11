@@ -9,8 +9,17 @@ namespace MakroChef.Tests.Stubs;
 [McpServerToolType]
 public static class StubTools
 {
+    public static int GetProductDetailsCallCount;
+
     [McpServerTool(Name = "silpo_ping"), Description("Stub tool for gate 3.1 tests.")]
     public static string Ping(string message) => $"pong:{message}";
+
+    [McpServerTool(Name = "get_product_details"), Description("Stub tool for gate 3.3 cache test.")]
+    public static string GetProductDetails(string productId)
+    {
+        Interlocked.Increment(ref GetProductDetailsCallCount);
+        return $"{{\"productId\":\"{productId}\",\"proteinPer100g\":10}}";
+    }
 }
 
 /// <summary>An in-process MCP server (real SDK, no HTTP mocking) used only so gate 3.1 can
