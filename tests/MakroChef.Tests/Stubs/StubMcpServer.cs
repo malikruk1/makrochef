@@ -37,6 +37,21 @@ public static class StubTools
 
     [McpServerTool(Name = "get_my_online_orders"), Description("Stub fixture for gate 3.4.")]
     public static string GetMyOnlineOrders() => CoverageFixture.OnlineOrdersJson;
+
+    [McpServerTool(Name = "get_my_profile"), Description("Stub fixture for gate 4.1.")]
+    public static string GetMyProfile() => """{"birthDate":"1995-06-15T00:00:00Z"}""";
+
+    [McpServerTool(Name = "get_my_family"), Description("Stub fixture for gate 4.1.")]
+    public static string GetMyFamily() => """{"members":[{"age":8},{"age":40}]}""";
+
+    [McpServerTool(Name = "get_my_food_restrictions"), Description("Stub fixture for gate 4.1.")]
+    public static string GetMyFoodRestrictions() => """{"restrictions":["риба","горіхи"]}""";
+
+    [McpServerTool(Name = "get_my_delivery_addresses"), Description("Stub fixture for gate 4.1.")]
+    public static string GetMyDeliveryAddresses() => """[{"city":"Київ","street":"Хрещатик"}]""";
+
+    [McpServerTool(Name = "get_loyalty_info"), Description("Stub fixture for gate 4.1.")]
+    public static string GetLoyaltyInfo() => """{"bonusBalance":275.5}""";
 }
 
 /// <summary>20-SKU fixture for gate 3.4 (15 complete + 5 "gap" products), split across two
