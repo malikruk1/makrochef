@@ -3,9 +3,11 @@ using MakroChef.Domain.Cart;
 
 namespace MakroChef.Agent.Cart;
 
-/// <summary>Schema-agnostic parsing of get_shopping_cart_by_id — same reasoning as every other
-/// parser in this codebase: tools/list only gives input schemas, real response shapes are
-/// unknown until BLOCKERS.md B-2 is lifted.</summary>
+/// <summary>Parsing of get_shopping_cart_by_id. Confirmed against a live cart (2026-09): the
+/// real response nests everything under "cart" (cart.shipments[].products[], cart.calculation.
+/// validations[], cart.calculation.totalAfterDiscounts) — scans recursively through any depth of
+/// nesting instead of assuming one fixed shape, so this also still matches the stub fixtures'
+/// flatter shape used by the gate 7.1/7.2 tests.</summary>
 public static class CartResponseParser
 {
     public static CartState Parse(string json)
@@ -16,82 +18,99 @@ public static class CartResponseParser
             return new CartState([], [], 0);
         }
 
-        var lines = ParseLines(root);
-        var validations = ParseValidations(root);
-        var total = ReadTotalKopecks(root);
-
-        return new CartState(lines, validations, total);
-    }
-
-    private static List<CartLine> ParseLines(JsonElement root)
-    {
         var lines = new List<CartLine>();
-        if (!TryGetArray(root, ["items", "lines", "products"], out var items))
-        {
-            return lines;
-        }
+        var validations = new List<CartValidationIssue>();
+        long? totalKopecks = null;
 
-        foreach (var item in items.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-            {
-                continue;
-            }
+        CollectLinesAndValidations(root, lines, validations, ref totalKopecks);
 
-            var productId = ReadString(item, ["productId", "sku", "id"]);
-            var quantity = (int)(ReadNumber(item, ["quantity", "qty", "units"]) ?? 1);
-
-            if (productId is not null)
-            {
-                lines.Add(new CartLine(productId, quantity));
-            }
-        }
-
-        return lines;
+        return new CartState(lines, validations, totalKopecks ?? 0);
     }
 
-    private static List<CartValidationIssue> ParseValidations(JsonElement root)
+    private static void CollectLinesAndValidations(
+        JsonElement element, List<CartLine> lines, List<CartValidationIssue> validations, ref long? totalKopecks)
     {
-        var issues = new List<CartValidationIssue>();
-        if (!TryGetArray(root, ["validations", "issues", "errors"], out var validations))
+        switch (element.ValueKind)
         {
-            return issues;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    TryParseAsLine(item, lines);
+                    TryParseAsValidation(item, validations);
+                    CollectLinesAndValidations(item, lines, validations, ref totalKopecks);
+                }
+
+                break;
+
+            case JsonValueKind.Object:
+                // Prefer totalAfterDiscounts (what the guest actually pays) over a plain "total".
+                if (totalKopecks is null)
+                {
+                    var preferred = ReadNumber(element, ["totalAfterDiscounts"]);
+                    if (preferred is not null)
+                    {
+                        totalKopecks = (long)Math.Round(preferred.Value * 100);
+                    }
+                }
+
+                foreach (var prop in element.EnumerateObject())
+                {
+                    CollectLinesAndValidations(prop.Value, lines, validations, ref totalKopecks);
+                }
+
+                if (totalKopecks is null)
+                {
+                    var fallback = ReadNumber(element, ["total", "totalAmount", "sum"]);
+                    if (fallback is not null)
+                    {
+                        totalKopecks = (long)Math.Round(fallback.Value * 100);
+                    }
+                }
+
+                break;
         }
-
-        foreach (var item in validations.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-            {
-                continue;
-            }
-
-            var productId = ReadString(item, ["productId", "sku", "id"]) ?? "";
-            var reason = ReadString(item, ["reason", "message", "status", "code"]) ?? "";
-            issues.Add(new CartValidationIssue(productId, reason));
-        }
-
-        return issues;
     }
 
-    private static long ReadTotalKopecks(JsonElement root)
+    private static void TryParseAsLine(JsonElement item, List<CartLine> lines)
     {
-        var total = ReadNumber(root, ["totalAmount", "total", "sum"]);
-        return total is null ? 0 : (long)Math.Round(total.Value * 100);
-    }
-
-    private static bool TryGetArray(JsonElement root, string[] keyCandidates, out JsonElement array)
-    {
-        foreach (var prop in root.EnumerateObject())
+        if (item.ValueKind != JsonValueKind.Object)
         {
-            if (keyCandidates.Contains(prop.Name, StringComparer.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.Array)
-            {
-                array = prop.Value;
-                return true;
-            }
+            return;
         }
 
-        array = default;
-        return false;
+        var productId = ReadString(item, ["productId"]);
+        // Require an explicit quantity — a validation entry can also carry a bare "productId"
+        // (in its "context", or flat in stub fixtures) without being a real cart line.
+        var quantity = ReadNumber(item, ["quantity", "qty", "units"]);
+        if (productId is null || quantity is null)
+        {
+            return;
+        }
+
+        lines.Add(new CartLine(productId, (int)Math.Round(quantity.Value)));
+    }
+
+    private static void TryParseAsValidation(JsonElement item, List<CartValidationIssue> validations)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        // Real shape: {"level":"error","type":"product","message":"product.offer.status.not_available","context":{"productId":"..."}}
+        var message = ReadString(item, ["message", "reason", "status", "code"]);
+        if (message is null)
+        {
+            return;
+        }
+
+        var productId = ReadString(item, ["productId", "sku", "id"]);
+        if (productId is null && item.TryGetProperty("context", out var context) && context.ValueKind == JsonValueKind.Object)
+        {
+            productId = ReadString(context, ["productId", "sku", "id"]);
+        }
+
+        validations.Add(new CartValidationIssue(productId ?? "", message));
     }
 
     private static string? ReadString(JsonElement element, string[] keyCandidates)

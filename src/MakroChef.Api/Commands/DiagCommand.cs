@@ -31,19 +31,32 @@ public static class DiagCommand
         }
 
         Console.WriteLine();
-        Console.WriteLine("=== get_my_offline_orders (raw) ===");
-        try
+        Console.WriteLine("=== silpo_get_my_shopping_cart (raw) ===");
+        var myCart = await client.CallToolAsync("silpo_get_my_shopping_cart", new Dictionary<string, object?>());
+        Console.WriteLine(myCart);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_shopping_cart_by_id (raw) ===");
+        var myCartParsed = System.Text.Json.JsonDocument.Parse(myCart).RootElement;
+        if (myCartParsed.TryGetProperty("shoppingCartId", out var cartIdEl) && cartIdEl.ValueKind == System.Text.Json.JsonValueKind.String)
         {
-            var offline = await client.CallToolAsync("silpo_get_my_offline_orders", new Dictionary<string, object?>());
-            Console.WriteLine(offline);
+            var cartById = await client.CallToolAsync(
+                "silpo_get_shopping_cart_by_id",
+                new Dictionary<string, object?> { ["shoppingCartId"] = cartIdEl.GetString() });
+            Console.WriteLine(cartById);
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"ERROR: {ex.Message}");
+            Console.WriteLine("(no cart id)");
         }
 
         Console.WriteLine();
-        Console.WriteLine("=== get_my_online_orders (raw) ===");
+        Console.WriteLine("=== silpo_get_my_delivery_addresses (raw) ===");
+        var addresses = await client.CallToolAsync("silpo_get_my_delivery_addresses", new Dictionary<string, object?>());
+        Console.WriteLine(addresses);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_online_orders (raw, no args) ===");
         try
         {
             var online = await client.CallToolAsync("silpo_get_my_online_orders", new Dictionary<string, object?>());

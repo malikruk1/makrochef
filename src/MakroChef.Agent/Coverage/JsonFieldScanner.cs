@@ -8,7 +8,7 @@ namespace MakroChef.Agent.Coverage;
 /// for known field-name candidates (case-insensitive) instead of assuming one fixed nesting.</summary>
 public static class JsonFieldScanner
 {
-    private static readonly string[] SkuKeyCandidates = ["productId", "sku", "itemId", "product_id"];
+    private static readonly string[] SkuKeyCandidates = ["productId", "sku", "itemId", "product_id", "id"];
     private static readonly string[] AmountKeyCandidates = ["totalAmount", "total", "sum", "amount"];
     private static readonly string[] DateKeyCandidates = ["createdAt", "date", "orderDate", "created_at"];
 
