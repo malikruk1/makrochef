@@ -384,6 +384,70 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
     });
 });
 
+app.MapPost("/api/checkout", async (MakroChefDbContext db, CheckoutRequest? body) =>
+{
+    var applyBonus = body?.ApplyBonus ?? false;
+
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+
+    SessionContext? session;
+    try
+    {
+        session = await new SessionBootstrap(mcpClient).EnsureAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося прочитати кошик: {ex.Message}", statusCode: 502);
+    }
+
+    if (session is null)
+    {
+        return Results.Problem("У гостя ще немає кошика — оформлення неможливе.", statusCode: 409);
+    }
+
+    // BLOCKERS.md B-6: a developer must eye-check the first real checkout link before trusting
+    // this cascade blindly - not yet done, so this stays flagged live even though the code path
+    // is complete and tested against stub fixtures.
+    decimal? bonusOffered = null;
+    CheckoutLinks links;
+    try
+    {
+        links = await new CheckoutCascade(mcpClient, session).RunAsync(confirmApplyBonus: amount =>
+        {
+            bonusOffered = amount;
+            return Task.FromResult(applyBonus);
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Каскад чекауту не вдався: {ex.Message}", statusCode: 502);
+    }
+
+    return Results.Ok(new
+    {
+        webLink = links.WebLink,
+        mobileLink = links.MobileLink,
+        totalAfterDiscounts = links.TotalKopecks / 100m,
+        bonusOffered,
+        bonusApplied = applyBonus && bonusOffered is not null,
+    });
+});
+
 app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 {
     string dbStatus;
@@ -420,3 +484,9 @@ file class FixedTokenProvider(string token) : IMcpAuthTokenProvider
 /// <summary>Body of POST /api/basket/apply. ConfirmClear defaults false so a first call against a
 /// non-empty cart always stops for confirmation (TASKS.md 7.1) rather than silently clearing.</summary>
 public record ApplyBasketRequest(bool ConfirmClear = false);
+
+/// <summary>Body of POST /api/checkout. ApplyBonus defaults false: the first call always runs the
+/// cascade without spending bonuses and reports how much was on offer (TASKS.md 7.3 "питати,
+/// ніколи не застосовувати мовчки") - the guest confirms, then the Mini App calls again with
+/// applyBonus:true to actually spend them.</summary>
+public record CheckoutRequest(bool ApplyBonus = false);

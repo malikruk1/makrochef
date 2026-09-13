@@ -1,6 +1,7 @@
 using MakroChef.Agent.Cart;
 using MakroChef.Data;
 using MakroChef.Domain.Entities;
+using MakroChef.Domain.Cart;
 using MakroChef.Mcp;
 using MakroChef.Tests.Stubs;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,7 @@ public class CheckoutCascadeTests
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder, sessionId);
 
         var askedBonusAmount = -1m;
-        var cascade = new CheckoutCascade(mcpClient);
+        var cascade = new CheckoutCascade(mcpClient, StubSession.Default);
 
         var links = await cascade.RunAsync(confirmApplyBonus: amount =>
         {
@@ -73,7 +74,7 @@ public class CheckoutCascadeTests
         var sessionId = Guid.NewGuid();
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder, sessionId);
 
-        await new CheckoutCascade(mcpClient).RunAsync(confirmApplyBonus: _ => Task.FromResult(false));
+        await new CheckoutCascade(mcpClient, StubSession.Default).RunAsync(confirmApplyBonus: _ => Task.FromResult(false));
 
         // The fixture offers SAVE5 (discount 5) and SAVE20 (discount 20) - the cascade must
         // pick SAVE20, the largest, per TASKS.md 7.3 "найвигідніший".
@@ -100,7 +101,7 @@ public class CheckoutCascadeTests
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder, sessionId);
 
         var wasAsked = false;
-        await new CheckoutCascade(mcpClient).RunAsync(confirmApplyBonus: _ =>
+        await new CheckoutCascade(mcpClient, StubSession.Default).RunAsync(confirmApplyBonus: _ =>
         {
             wasAsked = true;
             return Task.FromResult(false);

@@ -5,12 +5,18 @@ using MakroChef.Mcp;
 namespace MakroChef.Agent.Cart;
 
 /// <summary>TASKS.md 7.3. 🔒 needs a live cart + real checkout (BLOCKERS.md B-2, B-6) — the
-/// order of these five steps is mandatory, each one changes what the next sees.</summary>
-public class CheckoutCascade(IMakroChefMcpClient mcpClient)
+/// order of these five steps is mandatory, each one changes what the next sees.
+///
+/// Confirmed live (2026-09-14): silpo_get_shopping_cart_by_id requires shoppingCartId (same
+/// discovery as BasketAssembler/CoverageProbe) — the final read here called it with no arguments
+/// and would fail validation on any real cart. silpo_update_shopping_cart is cart-scoped the same
+/// way, so shoppingCartId is threaded through that call too.</summary>
+public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext session)
 {
     public async Task<CheckoutLinks> RunAsync(Func<decimal, Task<bool>> confirmApplyBonus, CancellationToken cancellationToken = default)
     {
         var emptyArgs = new Dictionary<string, object?>();
+        var cartArgs = new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId };
 
         // a) Premium changes delivery terms and therefore the baseline (TASKS.md 4.3) - read
         // it first so everything downstream accounts for it.
@@ -34,7 +40,7 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient)
         {
             await mcpClient.CallToolAsync(
                 "silpo_update_shopping_cart",
-                new Dictionary<string, object?> { ["promoCode"] = bestPromoCode },
+                new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId, ["promoCode"] = bestPromoCode },
                 cancellationToken);
         }
 
@@ -45,13 +51,14 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient)
         {
             await mcpClient.CallToolAsync(
                 "silpo_update_shopping_cart",
-                new Dictionary<string, object?> { ["bonusRequested"] = bonusAvailable },
+                new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId, ["bonusRequested"] = bonusAvailable },
                 cancellationToken);
         }
 
         // e) Final read -> checkout links
-        var cartJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", emptyArgs, cancellationToken);
-        return ExtractCheckoutLinks(cartJson);
+        var cartJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", cartArgs, cancellationToken);
+        var cartState = CartResponseParser.Parse(cartJson);
+        return ExtractCheckoutLinks(cartJson) with { TotalKopecks = cartState.TotalKopecks };
     }
 
     private static List<string> ExtractIds(string json, string idKey)

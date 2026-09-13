@@ -49,7 +49,7 @@ function render() {
 }
 
 // Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Screens
-// 2, 3 and 4 are wired so far - see BLOCKERS.md for what's still needed for 5-6.
+// 2-5 are wired so far - see BLOCKERS.md for what's still needed for 6.
 async function renderLive(screenId) {
   if (screenId === "3") {
     return renderLiveBasket();
@@ -57,6 +57,10 @@ async function renderLive(screenId) {
 
   if (screenId === "4") {
     return renderLiveReoptimization();
+  }
+
+  if (screenId === "5") {
+    return renderLiveCheckout(false);
   }
 
   if (screenId !== "2") {
@@ -197,6 +201,53 @@ async function renderLiveReoptimization() {
       </div>`).join("")}</div>
     <p style="font-size:12px;color:var(--text-muted)">До сплати: ${r.totalAfterDiscounts.toFixed(2)} ₴</p>
   `;
+}
+
+async function renderLiveCheckout(applyBonus) {
+  const res = await fetch("/api/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ applyBonus }),
+  });
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const co = await res.json();
+
+  const bonusSection = co.bonusOffered == null
+    ? ""
+    : co.bonusApplied
+      ? `<p style="font-size:12px;color:var(--success)">Застосовано ${co.bonusOffered} бонусів.</p>`
+      : `
+        <div class="metric-card">
+          <div class="label">Доступно бонусів</div>
+          <div class="value">${co.bonusOffered}</div>
+        </div>
+        <button class="btn btn-secondary" style="width:100%" onclick="confirmApplyBonusAndRerender()">Застосувати бонуси</button>
+      `;
+
+  return `
+    <h1 class="app-title">Checkout (реальні дані)</h1>
+    <div class="price-breakdown">
+      <div class="price-line total"><span>До сплати</span><span>${co.totalAfterDiscounts.toFixed(2)} ₴</span></div>
+    </div>
+    ${bonusSection}
+    <p style="font-size:12px;color:var(--text-muted);margin-top:12px">Наступного тижня перевіримо, чи скоротився дефіцит.</p>
+    <div class="bottom-bar">
+      <a class="btn btn-primary" style="width:100%;text-align:center" href="${co.mobileLink || co.webLink || "#"}">Оформити замовлення</a>
+    </div>
+  `;
+}
+
+async function confirmApplyBonusAndRerender() {
+  const el = document.getElementById("screen-5");
+  el.innerHTML = renderLoading();
+  try {
+    el.innerHTML = await renderLiveCheckout(true);
+  } catch {
+    el.innerHTML = renderError();
+  }
 }
 
 function renderLoading() {
