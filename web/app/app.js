@@ -1,5 +1,5 @@
 const SCREENS = ["1", "2", "3", "4", "5", "6"];
-const STATES = ["data", "empty", "loading", "error"];
+const STATES = ["data", "live", "empty", "loading", "error"];
 let currentScreen = "1";
 let currentState = "data";
 
@@ -34,7 +34,10 @@ function render() {
   }
 
   const el = document.getElementById(`screen-${currentScreen}`);
-  if (currentState === "empty") {
+  if (currentState === "live") {
+    el.innerHTML = renderLoading();
+    renderLive(currentScreen).then(html => { el.innerHTML = html; }).catch(() => { el.innerHTML = renderError(); });
+  } else if (currentState === "empty") {
     el.innerHTML = renderEmpty(currentScreen);
   } else if (currentState === "loading") {
     el.innerHTML = renderLoading();
@@ -43,6 +46,61 @@ function render() {
   } else {
     el.innerHTML = renderScreens[currentScreen]();
   }
+}
+
+// Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Only
+// screen 2 is wired so far - see BLOCKERS.md for what's still needed for 3-6.
+async function renderLive(screenId) {
+  if (screenId !== "2") {
+    return `<div class="state-empty">Цей екран поки що лише на моках — реальні дані ще не підключені (див. BLOCKERS.md).</div>`;
+  }
+
+  const res = await fetch("/api/profile");
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const p = await res.json();
+
+  const restrictionsLine = p.restrictions.length > 0 ? p.restrictions.join(", ") : "немає";
+
+  return `
+    <h1 class="app-title">Профіль БЖВ (реальні дані)</h1>
+    <div class="metric-card">
+      <div class="label">Вік</div>
+      <div class="value">${p.ageYears ?? "невідомо"}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Розмір домогосподарства</div>
+      <div class="value">${p.familySize}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Обмеження</div>
+      <div class="value" style="font-size:14px">${restrictionsLine}</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Балабонуси</div>
+      <div class="value">${p.loyaltyBonus}</div>
+    </div>
+
+    <div class="section-title">Цільові норми (домогосподарство/добу)</div>
+    <div class="metric-card">
+      <div class="label">Білок</div>
+      <div class="value">${p.targetProteinGrams} г</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Стеля цукру</div>
+      <div class="value">${p.maxSugarGrams} г</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Калорійність</div>
+      <div class="value">${p.kcalMin}–${p.kcalMax}</div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted)">
+      Джерело норми: ${p.normSource}. "Спожито" ще не порахований — потребує slug-резолюції
+      товарів з чеків (відкрите питання, див. BLOCKERS.md).
+    </p>
+  `;
 }
 
 function renderLoading() {
