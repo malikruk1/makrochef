@@ -158,40 +158,44 @@ public static class DiagCommand
             new Dictionary<string, object?>(sessionArgs) { ["category"] = "syr-kyslomolochnyi-4988" });
         Console.WriteLine(byRealSlug);
 
+        // BLOCKERS.md #18: even with a real budget and 173 candidates, the solver stays
+        // infeasible. Run the actual BasketPlanner (same code /api/basket uses) and dump the
+        // candidate pool's category breakdown + achievable protein vs the target, since
+        // BasketSolver caps units PER category (diversity constraint) - if too few categories
+        // carry protein-rich items, the cap itself can make the target unreachable regardless of
+        // budget/sugar/kcal.
         Console.WriteLine();
-        Console.WriteLine("=== CandidatePoolBuilder step-by-step repro (category \"сир\") ===");
-        var productsJson = await client.CallToolAsync(
-            "silpo_get_products",
-            new Dictionary<string, object?>(sessionArgs) { ["category"] = "сир" });
-        Console.WriteLine($"silpo_get_products(\"сир\") raw: {productsJson}");
-
-        var categorySlugs = JsonFieldScanner.ExtractProductSlugs(productsJson);
-        Console.WriteLine($"Extracted {categorySlugs.Count} (id, slug) pairs.");
-
-        var (repoProductId, repoSlug) = categorySlugs.FirstOrDefault();
-        if (repoProductId is null)
+        Console.WriteLine("=== BasketPlanner full breakdown (BLOCKERS.md #18) ===");
+        var loggingSolver = new MakroChef.Agent.Tracing.LoggingBasketSolver(new MakroChef.Solver.BasketSolver(), recorder);
+        var plan = await new BasketPlanner(client, loggingSolver).PlanAsync();
+        if (plan is null)
         {
-            Console.WriteLine("(no id+slug pairs found in get_products response - this is why the pool is empty for this category)");
+            Console.WriteLine("(BasketPlanner returned null - no session)");
+            return 0;
         }
-        else
+
+        Console.WriteLine($"TargetProteinMg={plan.Request.TargetProteinMg} MaxSugarMg={plan.Request.MaxSugarMg} KcalMin={plan.Request.KcalMin} KcalMax={plan.Request.KcalMax} BaselineCostKopecks={plan.Request.BaselineCostKopecks} MaxUnitsPerCategory={plan.Request.MaxUnitsPerCategory}");
+        Console.WriteLine($"Candidate pool size: {plan.Request.Candidates.Count}");
+
+        var byCategory = plan.Request.Candidates
+            .Where(c => !c.Restricted)
+            .GroupBy(c => c.Category)
+            .Select(g => new
+            {
+                Category = g.Key,
+                Count = g.Count(),
+                MaxAchievableProteinMg = g.OrderByDescending(c => c.ProteinMg).Take(plan.Request.MaxUnitsPerCategory).Sum(c => c.ProteinMg),
+            })
+            .OrderByDescending(g => g.MaxAchievableProteinMg)
+            .ToList();
+
+        foreach (var g in byCategory)
         {
-            Console.WriteLine($"Resolving productId={repoProductId} slug={repoSlug}...");
-            var repoDetailsJson = await client.CallToolAsync("silpo_get_product_details", new Dictionary<string, object?>(sessionArgs) { ["slug"] = repoSlug });
-            Console.WriteLine($"silpo_get_product_details raw: {repoDetailsJson}");
-
-            var repoDetails = ProductDetailsParser.Parse(repoProductId, repoDetailsJson);
-            Console.WriteLine($"Parsed: category={repoDetails.Category} priceKopecks={repoDetails.PriceKopecks} weightGrams={repoDetails.WeightGrams} barcode={repoDetails.Barcode}");
-
-            var coverageForMode = await new CoverageProbe(client, session).RunAsync();
-            var mode = coverageForMode.CoveragePercent >= 60 ? NutritionResolverMode.Exact : NutritionResolverMode.CategoryIndex;
-            Console.WriteLine($"Coverage {coverageForMode.CoveragePercent:F0}% -> mode={mode}");
-            var nutritionResolver = NutritionResolverFactory.Create(mode, client, session);
-
-            var nutrients = await nutritionResolver.ResolveAsync(repoSlug, repoDetails.Barcode);
-            Console.WriteLine(nutrients is null
-                ? "nutritionResolver.ResolveAsync returned NULL - this is why ResolveCandidateAsync returns null for this product."
-                : $"nutrients: protein={nutrients.ProteinPer100g} fat={nutrients.FatPer100g} carbs={nutrients.CarbsPer100g} sugar={nutrients.SugarPer100g} kcal={nutrients.KcalPer100g} source={nutrients.Source}");
+            Console.WriteLine($"  category=\"{g.Category}\" count={g.Count} maxAchievableProteinMg(top {plan.Request.MaxUnitsPerCategory})={g.MaxAchievableProteinMg}");
         }
+
+        var totalMaxAchievableProteinMg = byCategory.Sum(g => g.MaxAchievableProteinMg);
+        Console.WriteLine($"Sum of per-category max achievable protein: {totalMaxAchievableProteinMg}mg vs target {plan.Request.TargetProteinMg}mg -> {(totalMaxAchievableProteinMg >= plan.Request.TargetProteinMg ? "REACHABLE in principle" : "STRUCTURALLY UNREACHABLE even ignoring budget/sugar/kcal")}");
 
         return 0;
     }

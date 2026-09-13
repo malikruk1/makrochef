@@ -21,12 +21,23 @@ namespace MakroChef.Agent.Catalog;
 /// restrictions, nutrient conversion, slug resolution) at a smaller scale.
 ///
 /// Confirmed live (2026-09-14): silpo_get_products' "category" filter needs a real category slug
-/// from silpo_get_categories, not a guessed free-text word - see CategoryResolver.</summary>
+/// from silpo_get_categories, not a guessed free-text word - see CategoryResolver.
+///
+/// Confirmed live (2026-09-14): real get_product_details never returns a "category" field at all
+/// (ProductDetailsParser falls back to "невідома" for every single product). BasketSolver caps
+/// units PER category to enforce basket diversity - with every real candidate falling into one
+/// "невідома" bucket, that cap collapsed into a global 3-unit limit on the entire 173-item pool,
+/// which is why the solver stayed infeasible even with a correct budget (BLOCKERS.md #18). Fixed
+/// by tagging each candidate found via the deficit-category search with the search keyword itself
+/// (a real, meaningful grouping we already have for free) instead of trusting the absent field.
+/// Seed products (from receipt history, not a category search) keep the parsed/fallback category
+/// since there's no better signal for them.</summary>
 public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver, SessionContext session)
 {
     public async Task<IReadOnlyList<Candidate>> BuildAsync(CandidatePoolRequest request, CancellationToken cancellationToken = default)
     {
         var slugsById = new Dictionary<string, string>();
+        var categoryHintById = new Dictionary<string, string>();
 
         if (request.SeedProductIds.Count > 0)
         {
@@ -61,14 +72,20 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
                         ["category"] = categorySlug,
                     },
                     cancellationToken);
-                MergeSlugs(slugsById, productsJson);
+                var foundInThisCategory = JsonFieldScanner.ExtractProductSlugs(productsJson);
+                foreach (var (id, slug) in foundInThisCategory)
+                {
+                    slugsById[id] = slug;
+                    categoryHintById.TryAdd(id, keyword);
+                }
             }
         }
 
         var candidates = new List<Candidate>();
         foreach (var (productId, slug) in slugsById)
         {
-            var candidate = await ResolveCandidateAsync(productId, slug, request.RestrictedCategories, cancellationToken);
+            var categoryHint = categoryHintById.GetValueOrDefault(productId);
+            var candidate = await ResolveCandidateAsync(productId, slug, categoryHint, request.RestrictedCategories, cancellationToken);
             if (candidate is not null)
             {
                 candidates.Add(candidate);
@@ -86,7 +103,8 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
         }
     }
 
-    private async Task<Candidate?> ResolveCandidateAsync(string productId, string slug, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
+    private async Task<Candidate?> ResolveCandidateAsync(
+        string productId, string slug, string? categoryHint, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
     {
         try
         {
@@ -103,6 +121,7 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
                 cancellationToken);
 
             var details = ProductDetailsParser.Parse(productId, detailsJson);
+            var category = categoryHint ?? details.Category;
 
             var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
             if (nutrients is null)
@@ -111,11 +130,11 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
             }
 
             var weightFactor = details.WeightGrams / 100m;
-            var restricted = restrictedCategories.Contains(details.Category, StringComparer.OrdinalIgnoreCase);
+            var restricted = restrictedCategories.Contains(category, StringComparer.OrdinalIgnoreCase);
 
             return new Candidate(
                 ProductId: productId,
-                Category: details.Category,
+                Category: category,
                 PriceKopecks: details.PriceKopecks,
                 ProteinMg: ToMilligrams(nutrients.ProteinPer100g, weightFactor),
                 SugarMg: ToMilligrams(nutrients.SugarPer100g, weightFactor),
