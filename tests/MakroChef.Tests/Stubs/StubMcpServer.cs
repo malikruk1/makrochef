@@ -43,7 +43,7 @@ public static class StubTools
     public static string GetMyOnlineOrders() => CoverageFixture.OnlineOrdersJson;
 
     [McpServerTool(Name = "silpo_get_my_profile"), Description("Stub fixture for gate 4.1.")]
-    public static string GetMyProfile() => """{"birthDate":"1995-06-15T00:00:00Z"}""";
+    public static string GetMyProfile() => """{"success":true,"profile":{"birthday":"1995-06-15"}}""";
 
     [McpServerTool(Name = "silpo_get_my_family"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyFamily() => """{"members":[{"age":8},{"age":40}]}""";
@@ -55,7 +55,13 @@ public static class StubTools
     public static string GetMyDeliveryAddresses() => """[{"city":"Київ","street":"Хрещатик"}]""";
 
     [McpServerTool(Name = "silpo_get_loyalty_info"), Description("Stub fixture for gate 4.1.")]
-    public static string GetLoyaltyInfo() => """{"bonusBalance":275.5}""";
+    // NOTE (BLOCKERS.md, 2026-09-14): a live call showed get_loyalty_info's real shape only
+    // has loyalty.balance.total - no bonusAvailable/bonusRequested/isEnabled. Those actually
+    // live in get_shopping_cart_by_id's root-level "loyalty" object instead. CheckoutCascade
+    // still reads them from get_loyalty_info (open gap); this stub combines both shapes so
+    // GuestContextCollector's and CheckoutCascade's tests can both pass until that's fixed.
+    public static string GetLoyaltyInfo() =>
+        """{"success":true,"loyalty":{"balance":{"total":275.5},"bonusAvailable":275.5,"bonusRequested":null,"isEnabled":true}}""";
 
     [McpServerTool(Name = "silpo_find_products_batch"), Description("Stub fixture for gate 6.1.")]
     public static string FindProductsBatch() => CatalogFixture.SeedProductsJson;
@@ -107,17 +113,28 @@ public static class StubTools
     [McpServerTool(Name = "silpo_get_shopping_cart_by_id"), Description("Stub cart for gate 7.")]
     public static string GetShoppingCartById()
     {
-        var items = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}}}""");
+        var products = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}}}""");
         var validations = StubCartState.Lines.Keys
             .Where(id => StubCartState.OutOfStock.Contains(id))
-            .Select(id => $$"""{"productId":"{{id}}","reason":"out of stock"}""");
+            .Select(id => "{\"message\":\"product.offer.status.not_available\",\"context\":{\"productId\":\"" + id + "\"}}");
 
         var links = StubCartState.CheckoutReady
             ? ",\"checkoutWebLink\":\"https://silpo.ua/checkout/abc\",\"checkoutMobileLink\":\"silpo://checkout/abc\""
             : "";
 
-        return $$"""{"items":[{{string.Join(",", items)}}],"validations":[{{string.Join(",", validations)}}],"totalAmount":0{{links}}}""";
+        // Real shape (confirmed live 2026-09-14): wrapped in "cart", shipments[].products[],
+        // calculation.validations[]/totalAfterDiscounts. branchId/deliveryType/timeslot are
+        // fixed stub values for SessionBootstrap tests (gate 3.3).
+        return "{\"cart\":{\"id\":\"stub-cart-1\",\"deliveryType\":\"SelfPickup\"," +
+               "\"timeslot\":{\"start\":\"2026-09-14T06:00:00+00:00\",\"end\":\"2026-09-14T06:30:00+00:00\"}," +
+               "\"shipments\":[{\"branchId\":\"stub-branch-1\",\"products\":[" + string.Join(",", products) + "]}]," +
+               "\"calculation\":{\"totalAfterDiscounts\":0,\"validations\":[" + string.Join(",", validations) + "]}}" +
+               links + "}";
+        // note: root object opened by the leading '{' above is closed by the final '}' after `links`
     }
+
+    [McpServerTool(Name = "silpo_get_my_shopping_cart"), Description("Stub cart for gate 3.3.")]
+    public static string GetMyShoppingCart() => """{"success":true,"shoppingCartId":"stub-cart-1","exists":true}""";
 
     [McpServerTool(Name = "silpo_get_my_premium_subscription"), Description("Stub fixture for gate 7.3.")]
     public static string GetMyPremiumSubscription() => """{"isPremium":false}""";

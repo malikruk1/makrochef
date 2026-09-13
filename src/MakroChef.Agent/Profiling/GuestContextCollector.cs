@@ -36,9 +36,13 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
             return null;
         }
 
-        foreach (var key in new[] { "birthDate", "dateOfBirth", "birthdate" })
+        // Real shape (confirmed live 2026-09-14): wrapped in "profile", key is "birthday"
+        // ("2001-07-15", date-only) - not "birthDate" as originally guessed.
+        var profile = root.Value.TryGetProperty("profile", out var p) && p.ValueKind == JsonValueKind.Object ? p : root.Value;
+
+        foreach (var key in new[] { "birthday", "birthDate", "dateOfBirth", "birthdate" })
         {
-            if (root.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+            if (profile.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
                 && DateTimeOffset.TryParse(value.GetString(), out var birthDate))
             {
                 var today = DateTimeOffset.UtcNow;
@@ -132,9 +136,20 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
             return 0;
         }
 
+        // Real shape (confirmed live 2026-09-14): wrapped in "loyalty", the actual balance is
+        // loyalty.balance.total (a nested object, not a bare number) - "balance" alone is an
+        // object here, not the amount itself, unlike originally guessed.
+        var loyalty = root.Value.TryGetProperty("loyalty", out var l) && l.ValueKind == JsonValueKind.Object ? l : root.Value;
+
+        if (loyalty.TryGetProperty("balance", out var balanceObj) && balanceObj.ValueKind == JsonValueKind.Object
+            && balanceObj.TryGetProperty("total", out var total) && total.ValueKind == JsonValueKind.Number)
+        {
+            return total.GetDecimal();
+        }
+
         foreach (var key in new[] { "bonusBalance", "balance", "loyaltyBalance" })
         {
-            if (root.Value.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number)
+            if (loyalty.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number)
             {
                 return value.GetDecimal();
             }

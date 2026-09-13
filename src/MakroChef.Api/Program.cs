@@ -1,5 +1,8 @@
+using MakroChef.Agent.Profiling;
 using MakroChef.Api.Commands;
 using MakroChef.Data;
+using MakroChef.Domain.Profile;
+using MakroChef.Mcp;
 using MakroChef.Mcp.OAuth;
 using MakroChef.Solver;
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +89,55 @@ if (Directory.Exists(webDir))
 app.MapGet("/api/trace/{sessionId:guid}", async (Guid sessionId, MakroChefDbContext db) =>
     Results.Ok(await MakroChef.Api.TraceQuery.GetCallsAsync(db, sessionId)));
 
+app.MapGet("/api/profile", async (MakroChefDbContext db) =>
+{
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+
+    GuestProfile profile;
+    try
+    {
+        profile = await new GuestContextCollector(mcpClient).CollectAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося прочитати профіль з MCP: {ex.Message}", statusCode: 502);
+    }
+
+    // Real per-receipt calorie derivation needs the slug/branchId product-detail pipeline
+    // (BLOCKERS.md, 2026-09-14 entry) - not wired yet, so this stays honestly at the
+    // "estimate" tier rather than faking a measured number.
+    var norms = new TargetNormsCalculator().Compute(profile, medianDailyKcal: null);
+
+    return Results.Ok(new
+    {
+        ageYears = profile.AgeYears,
+        familySize = 1 + profile.Family.Count,
+        restrictions = profile.Restrictions,
+        hasSavedAddress = profile.HasSavedAddress,
+        loyaltyBonus = profile.LoyaltyBonusBalance,
+        targetProteinGrams = norms.ProteinTargetGrams,
+        maxSugarGrams = norms.MaxSugarGrams,
+        kcalMin = norms.KcalMin,
+        kcalMax = norms.KcalMax,
+        normSource = norms.Source,
+    });
+});
+
 app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 {
     string dbStatus;
@@ -112,3 +164,9 @@ app.Run();
 return 0;
 
 public partial class Program;
+
+file class FixedTokenProvider(string token) : IMcpAuthTokenProvider
+{
+    public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(token);
+    public Task<string?> ForceRefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+}

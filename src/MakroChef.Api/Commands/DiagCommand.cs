@@ -93,6 +93,16 @@ public static class DiagCommand
         }
 
         Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_profile (raw) ===");
+        var profile = await client.CallToolAsync("silpo_get_my_profile", new Dictionary<string, object?>());
+        Console.WriteLine(profile);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_loyalty_info (raw) ===");
+        var loyalty = await client.CallToolAsync("silpo_get_loyalty_info", new Dictionary<string, object?>());
+        Console.WriteLine(loyalty);
+
+        Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_delivery_addresses (raw) ===");
         var addresses = await client.CallToolAsync("silpo_get_my_delivery_addresses", new Dictionary<string, object?>());
         Console.WriteLine(addresses);

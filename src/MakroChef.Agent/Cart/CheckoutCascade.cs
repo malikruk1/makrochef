@@ -140,21 +140,24 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient)
             return (0, null, false);
         }
 
+        // Real get_loyalty_info wraps everything in "loyalty" (confirmed live 2026-09-14).
+        var loyalty = root.TryGetProperty("loyalty", out var l) && l.ValueKind == JsonValueKind.Object ? l : root;
+
         decimal available = 0;
         foreach (var key in new[] { "bonusAvailable", "bonusBalance", "balance" })
         {
-            if (root.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number)
+            if (loyalty.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number)
             {
                 available = value.GetDecimal();
                 break;
             }
         }
 
-        decimal? requested = root.TryGetProperty("bonusRequested", out var requestedValue) && requestedValue.ValueKind == JsonValueKind.Number
+        decimal? requested = loyalty.TryGetProperty("bonusRequested", out var requestedValue) && requestedValue.ValueKind == JsonValueKind.Number
             ? requestedValue.GetDecimal()
             : null;
 
-        var isEnabled = !root.TryGetProperty("isEnabled", out var enabledValue) || enabledValue.ValueKind != JsonValueKind.False;
+        var isEnabled = !loyalty.TryGetProperty("isEnabled", out var enabledValue) || enabledValue.ValueKind != JsonValueKind.False;
 
         return (available, requested, isEnabled);
     }
