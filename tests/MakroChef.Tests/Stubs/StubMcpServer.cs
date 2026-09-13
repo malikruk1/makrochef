@@ -124,9 +124,11 @@ public static class StubTools
     }
 
     [McpServerTool(Name = "silpo_add_or_update_cart_products"), Description("Stub cart for gate 7.")]
-    public static string AddOrUpdateCartProducts(System.Text.Json.JsonElement items)
+    // Real schema (confirmed live 2026-09-14, tools/list inputSchema): the array param is named
+    // "products" (not "items"), each entry requires productId+companyId+branchId+quantity.
+    public static string AddOrUpdateCartProducts(System.Text.Json.JsonElement products)
     {
-        foreach (var item in items.EnumerateArray())
+        foreach (var item in products.EnumerateArray())
         {
             var productId = item.GetProperty("productId").GetString()!;
             var quantity = item.TryGetProperty("quantity", out var q) ? q.GetInt32() : 1;
@@ -136,12 +138,14 @@ public static class StubTools
         return """{"success":true}""";
     }
 
+    // Real schema (confirmed live 2026-09-14): the array param is named "products" (not
+    // "productIds"), and each entry is an object {"productId": "..."} (not a bare string).
     [McpServerTool(Name = "silpo_remove_cart_products"), Description("Stub cart for gate 7.")]
-    public static string RemoveCartProducts(string[] productIds)
+    public static string RemoveCartProducts(System.Text.Json.JsonElement products)
     {
-        foreach (var id in productIds)
+        foreach (var item in products.EnumerateArray())
         {
-            StubCartState.Lines.Remove(id);
+            StubCartState.Lines.Remove(item.GetProperty("productId").GetString()!);
         }
 
         return """{"success":true}""";
@@ -247,7 +251,7 @@ public static class CatalogFixture
 
     private static string Product(string category, decimal price, decimal protein, decimal sugar, int weightGrams = 100) =>
         "{\"success\":true,\"product\":{\"category\":\"" + category + "\",\"price\":" + price.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-        ",\"displayRatio\":\"" + weightGrams + "г\",\"attributes\":{\"Білки (г)\":" + protein.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        ",\"companyId\":\"stub-company-1\",\"displayRatio\":\"" + weightGrams + "г\",\"attributes\":{\"Білки (г)\":" + protein.ToString(System.Globalization.CultureInfo.InvariantCulture) +
         ",\"У тому числі цукри (г)\":" + sugar.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}}";
 }
 

@@ -9,8 +9,19 @@ namespace MakroChef.Agent.Cart;
 /// parameter (SessionBootstrap already discovered this) — the previous version of this class
 /// called it with no arguments at all and would fail validation on any real cart. Cart mutation
 /// tools are scoped the same way as every other catalog tool, so shoppingCartId is threaded
-/// through add/remove/clear too; companyId is per TASKS.md 3.1 baked into the server and never
-/// passed.</summary>
+/// through add/remove/clear too.
+///
+/// Confirmed live (2026-09-14) via the tools' own JSON input schema (not just prose
+/// description): silpo_add_or_update_cart_products' line-items array is called
+/// <c>"products"</c>, not <c>"items"</c>, and each entry requires
+/// productId+companyId+branchId+quantity. silpo_remove_cart_products' array is ALSO called
+/// <c>"products"</c> (not <c>"productIds"</c>) and each entry is an OBJECT
+/// <c>{"productId": "..."}</c>, not a bare string. Both were silently wrong before — every add/
+/// remove/reoptimize call "succeeded" (success:true) while leaving the real cart completely
+/// unchanged, since the server ignored the unrecognized field names entirely
+/// (BLOCKERS.md — reoptimization couldn't clear out-of-stock items after 3 iterations).
+/// companyId is a real per-product field (get_product_details' "companyId"), not a single
+/// server-side constant as originally guessed.</summary>
 public class BasketAssembler(IMakroChefMcpClient mcpClient, SessionContext session)
 {
     public async Task<CartState> GetCartAsync(CancellationToken cancellationToken = default)
@@ -54,11 +65,12 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, SessionContext sessi
             new Dictionary<string, object?>
             {
                 ["shoppingCartId"] = session.ShoppingCartId,
-                ["items"] = lines.Select(l => new Dictionary<string, object?>
+                ["products"] = lines.Select(l => new Dictionary<string, object?>
                 {
                     ["productId"] = l.ProductId,
                     ["quantity"] = l.Units,
                     ["branchId"] = session.BranchId,
+                    ["companyId"] = l.CompanyId,
                 }).ToList(),
             },
             cancellationToken);
@@ -71,7 +83,7 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, SessionContext sessi
                 new Dictionary<string, object?>
                 {
                     ["shoppingCartId"] = session.ShoppingCartId,
-                    ["productIds"] = productIds,
+                    ["products"] = productIds.Select(id => new Dictionary<string, object?> { ["productId"] = id }).ToList(),
                 },
                 cancellationToken);
 }

@@ -1,6 +1,9 @@
 namespace MakroChef.Domain.Solver;
 
-public record BasketLine(string ProductId, int Units);
+// Confirmed live (2026-09-14): silpo_add_or_update_cart_products' own tool description says it
+// "Requires productId, companyId, and branchId" - CompanyId must travel with each line all the
+// way from the resolved Candidate, not be assumed away.
+public record BasketLine(string ProductId, int Units, string? CompanyId = null);
 
 public record SolverResult(
     bool Success,

@@ -35,6 +35,18 @@ public static class DiagCommand
             Console.WriteLine($"- {tool.Name}: {tool.Description}");
         }
 
+        // BLOCKERS.md: reoptimization isn't actually removing out-of-stock items from the real
+        // cart despite silpo_remove_cart_products/silpo_add_or_update_cart_products both
+        // returning success - dump the exact input schema for both so the real required
+        // shape/argument names (not just prose description) can be confirmed.
+        Console.WriteLine();
+        Console.WriteLine("=== input schemas: silpo_remove_cart_products / silpo_add_or_update_cart_products ===");
+        foreach (var tool in tools.Where(t => t.Name is "silpo_remove_cart_products" or "silpo_add_or_update_cart_products"))
+        {
+            Console.WriteLine($"--- {tool.Name} ---");
+            Console.WriteLine(tool.InputSchemaJson);
+        }
+
         Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_shopping_cart (raw) ===");
         var myCart = await client.CallToolAsync("silpo_get_my_shopping_cart", new Dictionary<string, object?>());

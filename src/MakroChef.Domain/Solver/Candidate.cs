@@ -14,4 +14,8 @@ public record Candidate(
     int MaxUnits = 4,
     // Confirmed live (2026-09-14): real get_product_details carries a human-readable "name" -
     // null only for stub fixtures/tests that don't bother setting one.
-    string? Name = null);
+    string? Name = null,
+    // Confirmed live (2026-09-14): silpo_add_or_update_cart_products' own tool description says
+    // it requires companyId alongside productId/branchId - must be carried per-candidate, not
+    // assumed to be a single server-side constant.
+    string? CompanyId = null);

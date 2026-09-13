@@ -119,7 +119,7 @@ public class BasketSolver
             }
 
             var c = candidates[i];
-            lines.Add(new BasketLine(c.ProductId, units));
+            lines.Add(new BasketLine(c.ProductId, units, c.CompanyId));
             totalCost += c.PriceKopecks * units;
             totalProtein += c.ProteinMg * units;
             totalSugar += c.SugarMg * units;

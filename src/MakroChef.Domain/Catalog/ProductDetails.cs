@@ -11,4 +11,7 @@ public record ProductDetails(
     decimal WeightGrams,
     // Confirmed live (2026-09-14): real get_product_details carries "name" at the product root
     // (e.g. "Снеки Чікенззз Peri-Peri з м'ясом птиці в/к") - null when absent/unparseable.
-    string? Name = null);
+    string? Name = null,
+    // Confirmed live (2026-09-14): real get_product_details carries "companyId" at the product
+    // root - silpo_add_or_update_cart_products requires it per its own tool description.
+    string? CompanyId = null);
