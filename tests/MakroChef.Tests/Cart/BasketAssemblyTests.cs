@@ -25,7 +25,7 @@ public class BasketAssemblyTests
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
 
-        var assembler = new BasketAssembler(mcpClient, companyId: "co1", branchId: "br1");
+        var assembler = new BasketAssembler(mcpClient, StubSession.Default);
         var askedToClear = false;
 
         var cart = await assembler.AssembleAsync(
@@ -53,7 +53,7 @@ public class BasketAssemblyTests
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
 
-        var assembler = new BasketAssembler(mcpClient, companyId: "co1", branchId: "br1");
+        var assembler = new BasketAssembler(mcpClient, StubSession.Default);
         var askedToClear = false;
 
         var cart = await assembler.AssembleAsync(
@@ -82,7 +82,7 @@ public class BasketAssemblyTests
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
         var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
         var solver = new LoggingBasketSolver(new MakroChef.Solver.BasketSolver(), recorder);
-        var assembler = new BasketAssembler(mcpClient, companyId: "co1", branchId: "br1");
+        var assembler = new BasketAssembler(mcpClient, StubSession.Default);
         var reoptimizer = new ReoptimizationService(mcpClient, resolver, solver, assembler, StubSession.Default);
 
         // Hand-built pool: test_cheese is the cheapest per gram, so it dominates the initial

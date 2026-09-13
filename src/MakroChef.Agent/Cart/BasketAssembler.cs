@@ -3,12 +3,22 @@ using MakroChef.Mcp;
 
 namespace MakroChef.Agent.Cart;
 
-/// <summary>TASKS.md 7.1. 🔒 needs a live cart session (BLOCKERS.md B-2).</summary>
-public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, string branchId)
+/// <summary>TASKS.md 7.1. 🔒 needs a live cart session (BLOCKERS.md B-2).
+///
+/// Confirmed live (2026-09-14): silpo_get_shopping_cart_by_id requires a shoppingCartId
+/// parameter (SessionBootstrap already discovered this) — the previous version of this class
+/// called it with no arguments at all and would fail validation on any real cart. Cart mutation
+/// tools are scoped the same way as every other catalog tool, so shoppingCartId is threaded
+/// through add/remove/clear too; companyId is per TASKS.md 3.1 baked into the server and never
+/// passed.</summary>
+public class BasketAssembler(IMakroChefMcpClient mcpClient, SessionContext session)
 {
     public async Task<CartState> GetCartAsync(CancellationToken cancellationToken = default)
     {
-        var json = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", new Dictionary<string, object?>(), cancellationToken);
+        var json = await mcpClient.CallToolAsync(
+            "silpo_get_shopping_cart_by_id",
+            new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId },
+            cancellationToken);
         return CartResponseParser.Parse(json);
     }
 
@@ -25,7 +35,10 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
             var shouldClear = await confirmClearIfNotEmpty();
             if (shouldClear)
             {
-                await mcpClient.CallToolAsync("silpo_clear_shopping_cart", new Dictionary<string, object?>(), cancellationToken);
+                await mcpClient.CallToolAsync(
+                    "silpo_clear_shopping_cart",
+                    new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId },
+                    cancellationToken);
             }
         }
 
@@ -40,12 +53,12 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
             "silpo_add_or_update_cart_products",
             new Dictionary<string, object?>
             {
+                ["shoppingCartId"] = session.ShoppingCartId,
                 ["items"] = lines.Select(l => new Dictionary<string, object?>
                 {
                     ["productId"] = l.ProductId,
                     ["quantity"] = l.Units,
-                    ["companyId"] = companyId,
-                    ["branchId"] = branchId,
+                    ["branchId"] = session.BranchId,
                 }).ToList(),
             },
             cancellationToken);
@@ -55,6 +68,10 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
             ? Task.CompletedTask
             : mcpClient.CallToolAsync(
                 "silpo_remove_cart_products",
-                new Dictionary<string, object?> { ["productIds"] = productIds },
+                new Dictionary<string, object?>
+                {
+                    ["shoppingCartId"] = session.ShoppingCartId,
+                    ["productIds"] = productIds,
+                },
                 cancellationToken);
 }
