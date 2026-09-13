@@ -258,29 +258,33 @@ public static class CatalogFixture
 /// weeks of orders so the median-weekly-receipt calculation has something to chew on.</summary>
 public static class CoverageFixture
 {
+    // Real shape (confirmed live 2026-09-14): wrapped in "orders", offline per-order total is
+    // "sumReg" (not "totalAmount"), line items live under "products" (not "items").
     public const string OfflineOrdersJson = """
-        [
-          {"totalAmount": 850.50, "createdAt": "2026-08-03T10:00:00Z",
-           "items": [
+        {"success":true,"orders":[
+          {"sumReg": 850.50, "createdAt": "2026-08-03T10:00:00Z",
+           "products": [
              {"productId":"sku1"},{"productId":"sku2"},{"productId":"sku3"},
              {"productId":"sku4"},{"productId":"sku5"},{"productId":"gap1"},{"productId":"gap2"}
            ]},
-          {"totalAmount": 920.00, "createdAt": "2026-08-10T10:00:00Z",
-           "items": [
+          {"sumReg": 920.00, "createdAt": "2026-08-10T10:00:00Z",
+           "products": [
              {"productId":"sku6"},{"productId":"sku7"},{"productId":"sku8"},
              {"productId":"sku9"},{"productId":"sku10"},{"productId":"gap3"}
            ]}
-        ]
+        ]}
         """;
 
+    // Real shape (confirmed live 2026-09-14): wrapped in "orders", online per-order total is
+    // "amount", line items live under "products" (not "items").
     public const string OnlineOrdersJson = """
-        [
-          {"totalAmount": 430.25, "createdAt": "2026-08-10T18:00:00Z",
-           "items": [
+        {"success":true,"orders":[
+          {"amount": 430.25, "createdAt": "2026-08-10T18:00:00Z",
+           "products": [
              {"productId":"sku11"},{"productId":"sku12"},{"productId":"sku13"},
              {"productId":"sku14"},{"productId":"sku15"},{"productId":"gap4"},{"productId":"gap5"}
            ]}
-        ]
+        ]}
         """;
 }
 

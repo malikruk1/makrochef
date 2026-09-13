@@ -9,8 +9,13 @@ namespace MakroChef.Agent.Coverage;
 public static class JsonFieldScanner
 {
     private static readonly string[] SkuKeyCandidates = ["productId", "sku", "itemId", "product_id", "id"];
-    private static readonly string[] AmountKeyCandidates = ["totalAmount", "total", "sum", "amount"];
+    // "sumReg" confirmed live (2026-09-14): silpo_get_my_offline_orders' per-order total, not
+    // "totalAmount"/"total"/"sum"/"amount" as guessed - silpo_get_my_online_orders does use "amount".
+    private static readonly string[] AmountKeyCandidates = ["totalAmount", "total", "sum", "amount", "sumReg"];
     private static readonly string[] DateKeyCandidates = ["createdAt", "date", "orderDate", "created_at"];
+    // Confirmed live: both silpo_get_my_offline_orders and silpo_get_my_online_orders wrap their
+    // per-order line items in a "products" array, not "items".
+    private static readonly string[] LineItemsKeyCandidates = ["items", "products"];
 
     public static IReadOnlySet<string> ExtractProductIds(string json)
     {
@@ -125,7 +130,18 @@ public static class JsonFieldScanner
                 }
             }
 
-            if (date is null || !order.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            JsonElement items = default;
+            var foundItems = false;
+            foreach (var key in LineItemsKeyCandidates)
+            {
+                if (order.TryGetProperty(key, out items) && items.ValueKind == JsonValueKind.Array)
+                {
+                    foundItems = true;
+                    break;
+                }
+            }
+
+            if (date is null || !foundItems)
             {
                 continue;
             }
@@ -169,8 +185,19 @@ public static class JsonFieldScanner
         return results;
     }
 
+    /// <summary>Confirmed live (2026-09-14): silpo_get_my_offline_orders/silpo_get_my_online_orders
+    /// both wrap the actual order list in a root-level "orders" array
+    /// (<c>{"success":true,"summary":"...","orders":[...]}</c>), not a bare top-level array or a
+    /// single order object as originally guessed - without unwrapping this, every order's amount
+    /// and date lived one level too deep to ever be found, silently producing a null median
+    /// weekly receipt (BLOCKERS.md #17).</summary>
     private static IEnumerable<JsonElement> EnumerateOrderLikeObjects(JsonElement element)
     {
+        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty("orders", out var orders) && orders.ValueKind == JsonValueKind.Array)
+        {
+            element = orders;
+        }
+
         if (element.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in element.EnumerateArray())
