@@ -240,7 +240,19 @@ async function renderLiveReoptimization() {
         <div class="swap-new">× ${l.quantity}</div>
       </div>`).join("")}</div>
     <p style="font-size:12px;color:var(--text-muted)">До сплати: ${r.totalAfterDiscounts.toFixed(2)} ₴</p>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" style="width:100%" onclick="proceedToCheckoutFromReoptimization()">До оформлення</button>
+    </div>
   `;
+}
+
+function proceedToCheckoutFromReoptimization() {
+  // ReoptimizationService already wrote the new basket to the guest's real cart
+  // (BasketAssembler.RemoveAsync/AddOrUpdateAsync ran inside /api/basket/reoptimize) - no
+  // separate apply step needed here, just move on to checkout.
+  currentScreen = "5";
+  currentState = "live";
+  render();
 }
 
 async function renderLiveCheckout(applyBonus) {
