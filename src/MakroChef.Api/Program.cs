@@ -1,4 +1,6 @@
+using MakroChef.Agent.Cart;
 using MakroChef.Agent.Profiling;
+using MakroChef.Agent.Tracing;
 using MakroChef.Api.Commands;
 using MakroChef.Data;
 using MakroChef.Domain.Profile;
@@ -135,6 +137,72 @@ app.MapGet("/api/profile", async (MakroChefDbContext db) =>
         kcalMin = norms.KcalMin,
         kcalMax = norms.KcalMax,
         normSource = norms.Source,
+    });
+});
+
+app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
+{
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+    var loggingSolver = new LoggingBasketSolver(solver, recorder);
+
+    BasketPlanResult? plan;
+    try
+    {
+        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося побудувати кошик з MCP: {ex.Message}", statusCode: 502);
+    }
+
+    if (plan is null)
+    {
+        return Results.Problem(
+            "У гостя ще немає кошика — потрібно спершу обрати адресу/філію в застосунку Сільпо (створення кошика тут не реалізовано).",
+            statusCode: 409);
+    }
+
+    if (!plan.Solver.Success)
+    {
+        return Results.Ok(new
+        {
+            success = false,
+            relaxed = plan.Solver.Relaxed,
+            candidatePoolSize = plan.CandidatePoolSize,
+            coveragePercent = plan.Coverage.CoveragePercent,
+        });
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        usualWeeklyTotal = plan.BaselineWeeklyCostKopecks / 100m,
+        optimizedTotal = plan.Solver.TotalCostKopecks / 100m,
+        totalProteinGrams = plan.Solver.TotalProteinMg / 1000m,
+        totalSugarGrams = plan.Solver.TotalSugarMg / 1000m,
+        totalKcal = plan.Solver.TotalKcal,
+        lines = plan.Solver.Lines.Select(l => new { productId = l.ProductId, units = l.Units }),
+        relaxed = plan.Solver.Relaxed,
+        candidatePoolSize = plan.CandidatePoolSize,
+        coveragePercent = plan.Coverage.CoveragePercent,
+        targetProteinGrams = plan.Norms.ProteinTargetGrams,
+        maxSugarGrams = plan.Norms.MaxSugarGrams,
+        normSource = plan.Norms.Source,
     });
 });
 

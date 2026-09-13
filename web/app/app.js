@@ -48,9 +48,13 @@ function render() {
   }
 }
 
-// Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Only
-// screen 2 is wired so far - see BLOCKERS.md for what's still needed for 3-6.
+// Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Screens
+// 2 and 3 are wired so far - see BLOCKERS.md for what's still needed for 4-6.
 async function renderLive(screenId) {
+  if (screenId === "3") {
+    return renderLiveBasket();
+  }
+
   if (screenId !== "2") {
     return `<div class="state-empty">Цей екран поки що лише на моках — реальні дані ще не підключені (див. BLOCKERS.md).</div>`;
   }
@@ -99,6 +103,60 @@ async function renderLive(screenId) {
     <p style="font-size:11px;color:var(--text-muted)">
       Джерело норми: ${p.normSource}. "Спожито" ще не порахований — потребує slug-резолюції
       товарів з чеків (відкрите питання, див. BLOCKERS.md).
+    </p>
+  `;
+}
+
+async function renderLiveBasket() {
+  const res = await fetch("/api/basket");
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const b = await res.json();
+
+  if (!b.success) {
+    const relaxedLine = b.relaxed.length > 0 ? `<p style="font-size:12px;color:var(--text-muted)">Послаблено: ${b.relaxed.join("; ")}</p>` : "";
+    return `<div class="state-empty">Солвер не знайшов рішення на поточному пулі товарів (${b.candidatePoolSize} шт).</div>${relaxedLine}`;
+  }
+
+  const lines = b.lines.map(l => `
+    <div class="swap-row">
+      <div class="swap-old">${l.productId}</div>
+      <div class="swap-new">× ${l.units}</div>
+    </div>`).join("");
+  const relaxedLine = b.relaxed.length > 0
+    ? `<p style="font-size:11px;color:var(--text-muted)">Послаблено, щоб знайти рішення: ${b.relaxed.join("; ")}</p>`
+    : "";
+
+  return `
+    <h1 class="app-title">Ваш кошик (реальні дані)</h1>
+    <div class="compare-card">
+      <div class="compare-row">
+        <div><div class="compare-number">${b.usualWeeklyTotal.toFixed(2)} ₴</div><div class="delta">звичний тиждень</div></div>
+        <div class="arrow">→</div>
+        <div><div class="compare-number" style="color:var(--accent-text)">${b.optimizedTotal.toFixed(2)} ₴</div><div class="delta">оптимізований</div></div>
+      </div>
+    </div>
+
+    <div class="section-title">Склад кошика (${b.lines.length} позицій)</div>
+    <div class="compare-card">${lines}</div>
+
+    <div class="section-title">Харчова цінність тижня</div>
+    <div class="metric-card">
+      <div class="label">Білок</div>
+      <div class="value">${b.totalProteinGrams.toFixed(0)} <span class="of">/ ${b.targetProteinGrams} г</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="label">Цукор</div>
+      <div class="value">${b.totalSugarGrams.toFixed(0)} <span class="of">/ ${b.maxSugarGrams} г (стеля)</span></div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted)">
+      Джерело норми: ${b.normSource}. Покриття даних про нутрієнти: ${b.coveragePercent.toFixed(0)}%. Пул кандидатів: ${b.candidatePoolSize} товарів.
+    </p>
+    ${relaxedLine}
+    <p style="font-size:11px;color:var(--text-muted)">
+      Це лише розрахунок — товари ще не додані в реальний кошик Сільпо (окрема дія з підтвердженням, TASKS.md 7.1).
     </p>
   `;
 }
