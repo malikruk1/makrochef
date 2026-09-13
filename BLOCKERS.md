@@ -6,14 +6,25 @@
 
 | ID | Що потрібно | Пункт TASKS.md | Статус |
 |----|---|---|---|
-| B-1 | Дані для Dynamic Client Registration в `auth.silpo.ua` (чи є вже client_id/secret, чи реєструємось динамічно) | 3.2 | OPEN |
-| B-2 | Реальний акаунт Сільпо + телефон для SMS OTP під час першого OAuth-логіну | 3.2, 3.3, 3.4, 4.1, 6.1, 7.1, 7.3 | OPEN |
+| B-1 | Дані для Dynamic Client Registration в `auth.silpo.ua` | 3.2 | **ЗНЯТО** 2026-09-13 — DCR працює автоматично, підтверджено живим прогоном |
+| B-2 | Реальний акаунт Сільпо + телефон для SMS OTP під час першого OAuth-логіну | 3.2, 3.3, 3.4, 4.1, 6.1, 7.1, 7.3 | **ЗНЯТО** 2026-09-13 — Docker Desktop полагоджено (4.20.1→4.34.3, деталі в CHECKPOINTS.md), токен реально збережено в Postgres, live-виклики до mcp.silpo.ua підтверджено |
 | B-3 | Telegram Bot Token від @BotFather для Mini App | 8.2 | OPEN |
-| B-5 | Рішення розробника: після живого прогону 3.4 (coverage probe) — фрейм профайлера ≥60% (точний БЖВ) чи <60% (індекс + Open Food Facts fallback) | 4.0 | OPEN, 🔴 блокує розділ 4 |
+| B-5 | Рішення розробника: фрейм профайлера ≥60% (точний БЖВ) чи <60% (індекс + Open Food Facts fallback) | 4.0 | OPEN — перший акаунт був порожній (без чеків), другий акаунт має чеки, але `probe` (3.4) ще не доведений до кінця через нові знахідки нижче |
 | B-6 | Перевірка розробником першого реального checkout-лінка очима перед довірою до каскаду знижок | 7.3 | OPEN |
 | — | GitHub remote: створити новий репозиторій чи є існуючий (URL, приватність, акаунт) | — (пуш коду) | OPEN |
 | — | `ANTHROPIC_API_KEY` — для нормалізації назв і пояснення свопів LLM | .env | OPEN |
 | — | `POSTGRES_PASSWORD`, `TOKEN_ENCRYPTION_KEY` — можу згенерувати сам для локальної розробки, підтвердити не потрібно | .env | не блокує |
+
+## Нові технічні знахідки з живого прогону (2026-09-13)
+Не блокери для людини, а конкретний код, який ще треба доробити тепер, коли видно реальні дані:
+
+1. **Назви tools мають префікс `silpo_`** (`silpo_get_my_offline_orders`, не `get_my_offline_orders`) — **ВИПРАВЛЕНО**, увесь код і stub-тести оновлені.
+2. **`get_shopping_cart_by_id` повертає вкладену структуру** (`cart.shipments[].products[]`, `cart.calculation.validations[]`) — **ВИПРАВЛЕНО**, `CartResponseParser` переписаний, є regression-тест на реальному (очищеному від PII) фікстурі.
+3. **`silpo_get_my_offline_orders` вимагає `branchId`/`deliveryType`/`timeslotStart`/`timeslotEnd`** — потребує спершу пройти bootstrap кошика (`get_my_shopping_cart` → якщо `exists:false`, `find_address`→`get_available_delivery_types`→`create_shopping_cart`, якщо `exists:true` — узяти ці поля з `get_shopping_cart_by_id`). **НЕ ЗРОБЛЕНО** — `CoverageProbe` і профайлер поки викликають цей tool без параметрів і отримають помилку валідації.
+4. **`get_product_details` реально приймає `branchId`+`slug`**, а не `productId`, згідно з описом самого tool (`silpo_find_products_batch`/`silpo_get_products` дають `slug`). Наш `CandidatePoolBuilder`/`SwapGenerator`/`ExactMcpNutritionResolver` усі викликають його з `productId` — **НЕ ПЕРЕВІРЕНО і, ймовірно, треба переробити** на реальному прогоні.
+5. Реальні продукти в `get_my_online_orders` мають поле **`id`**, не `productId` — `JsonFieldScanner` оновлено (додано `"id"` як кандидат).
+
+Пункти 3-4 — найбільший наступний шматок роботи, коли буде час: без них `probe`, `CandidatePoolBuilder`, `SwapGenerator` не запрацюють на живих даних, хоча вся логіка після отримання даних (парсинг, солвер, UI) вже написана й протестована.
 
 ## Примітка
 Не чекати на ці пункти для написання коду. Дивись TASKS.md 10.2 — порядок робіт
