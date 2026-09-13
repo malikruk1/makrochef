@@ -58,7 +58,7 @@ public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver so
 
         var result = await solver.SolveAsync(request, cancellationToken);
 
-        return new BasketPlanResult(norms, coverage, pool.Count, baselineWeeklyCostKopecks, result);
+        return new BasketPlanResult(session, norms, coverage, pool.Count, baselineWeeklyCostKopecks, result);
     }
 
     private async Task<List<string>> CollectSeedProductIdsAsync(Domain.Cart.SessionContext session, CancellationToken cancellationToken)

@@ -3,6 +3,7 @@ using MakroChef.Agent.Profiling;
 using MakroChef.Agent.Tracing;
 using MakroChef.Api.Commands;
 using MakroChef.Data;
+using MakroChef.Domain.Cart;
 using MakroChef.Domain.Profile;
 using MakroChef.Mcp;
 using MakroChef.Mcp.OAuth;
@@ -206,6 +207,96 @@ app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
     });
 });
 
+app.MapPost("/api/basket/apply", async (MakroChefDbContext db, BasketSolver solver, ApplyBasketRequest? body) =>
+{
+    var confirmClear = body?.ConfirmClear ?? false;
+
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+    var loggingSolver = new LoggingBasketSolver(solver, recorder);
+
+    BasketPlanResult? plan;
+    try
+    {
+        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося побудувати кошик з MCP: {ex.Message}", statusCode: 502);
+    }
+
+    if (plan is null)
+    {
+        return Results.Problem(
+            "У гостя ще немає кошика — потрібно спершу обрати адресу/філію в застосунку Сільпо.",
+            statusCode: 409);
+    }
+
+    if (!plan.Solver.Success)
+    {
+        return Results.Problem("Солвер не знайшов рішення — немає що застосовувати. Дивись /api/basket.", statusCode: 409);
+    }
+
+    var assembler = new BasketAssembler(mcpClient, plan.Session);
+
+    CartState existing;
+    try
+    {
+        existing = await assembler.GetCartAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося прочитати поточний кошик: {ex.Message}", statusCode: 502);
+    }
+
+    // TASKS.md 7.1: "питати гостя, якщо кошик не порожній" - never clear silently. The Mini App
+    // must show this count to the guest and let them explicitly confirm before we retry with
+    // confirmClear: true.
+    if (existing.Lines.Count > 0 && !confirmClear)
+    {
+        return Results.Json(new
+        {
+            needsConfirmation = true,
+            existingLineCount = existing.Lines.Count,
+            message = $"У кошику вже є {existing.Lines.Count} позицій. Повторіть запит із confirmClear:true, щоб очистити й замінити їх.",
+        }, statusCode: 409);
+    }
+
+    CartState finalCart;
+    try
+    {
+        finalCart = await assembler.AssembleAsync(
+            plan.Solver.Lines,
+            confirmClearIfNotEmpty: () => Task.FromResult(confirmClear));
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося оновити кошик у Сільпо: {ex.Message}", statusCode: 502);
+    }
+
+    return Results.Ok(new
+    {
+        success = true,
+        lines = finalCart.Lines.Select(l => new { productId = l.ProductId, quantity = l.Quantity }),
+        totalAfterDiscounts = finalCart.TotalKopecks / 100m,
+        validations = finalCart.Validations.Select(v => new { productId = v.ProductId, reason = v.Reason, isOutOfStock = v.IsOutOfStock }),
+    });
+});
+
 app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 {
     string dbStatus;
@@ -238,3 +329,7 @@ file class FixedTokenProvider(string token) : IMcpAuthTokenProvider
     public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(token);
     public Task<string?> ForceRefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 }
+
+/// <summary>Body of POST /api/basket/apply. ConfirmClear defaults false so a first call against a
+/// non-empty cart always stops for confirmation (TASKS.md 7.1) rather than silently clearing.</summary>
+public record ApplyBasketRequest(bool ConfirmClear = false);
