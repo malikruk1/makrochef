@@ -38,8 +38,10 @@ public class CheckoutCascadeTests
             return Task.FromResult(true);
         });
 
-        Assert.Equal("https://silpo.ua/checkout/abc", links.WebLink);
-        Assert.Equal("silpo://checkout/abc", links.MobileLink);
+        // B-6 (2026-09-14): no real checkout link exists in the actual API at all - WebLink/
+        // MobileLink stay null by design now; the real signal is BlockingValidations.
+        Assert.Null(links.WebLink);
+        Assert.Null(links.MobileLink);
         Assert.Equal(275.5m, askedBonusAmount);
 
         var calls = await db.McpCalls.Where(c => c.SessionId == sessionId).OrderBy(c => c.CreatedAt).Select(c => c.Tool).ToListAsync();
@@ -51,9 +53,9 @@ public class CheckoutCascadeTests
             "silpo_add_or_update_certificates",
             "silpo_get_promo_codes",
             "silpo_update_shopping_cart", // promo code
-            "silpo_get_loyalty_info",
+            "silpo_get_shopping_cart_by_id", // loyalty read (confirmed live: bonusAvailable lives here, not get_loyalty_info)
             "silpo_update_shopping_cart", // bonus
-            "silpo_get_shopping_cart_by_id",
+            "silpo_get_shopping_cart_by_id", // final read
         };
 
         Assert.Equal(expectedOrder, calls);

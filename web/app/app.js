@@ -267,16 +267,21 @@ async function renderLiveCheckout(applyBonus) {
         <button class="btn btn-secondary" style="width:100%" onclick="confirmApplyBonusAndRerender()">Застосувати бонуси</button>
       `;
 
+  // B-6 (2026-09-14): no real checkout link exists - MCP has no checkout/place_order/pay tool at
+  // all. If the cart has blocking validations (e.g. an item went out of stock), show those
+  // honestly instead of a dead/fake link.
+  const validationsSection = co.blockingValidations.length > 0
+    ? `<div class="banner">Кошик не готовий до оформлення: ${co.blockingValidations.join("; ")}</div>`
+    : `<p style="font-size:12px;color:var(--text-muted)">Кошик готовий — завершіть оплату в застосунку/на сайті Сільпо (MCP не надає посилання на оформлення).</p>`;
+
   return `
     <h1 class="app-title">Checkout (реальні дані)</h1>
     <div class="price-breakdown">
       <div class="price-line total"><span>До сплати</span><span>${co.totalAfterDiscounts.toFixed(2)} ₴</span></div>
     </div>
     ${bonusSection}
+    ${validationsSection}
     <p style="font-size:12px;color:var(--text-muted);margin-top:12px">Наступного тижня перевіримо, чи скоротився дефіцит.</p>
-    <div class="bottom-bar">
-      <a class="btn btn-primary" style="width:100%;text-align:center" href="${co.mobileLink || co.webLink || "#"}">Оформити замовлення</a>
-    </div>
   `;
 }
 

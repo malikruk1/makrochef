@@ -115,6 +115,31 @@ public static class DiagCommand
             Console.WriteLine($"ERROR: {ex.Message}");
         }
 
+        // BLOCKERS.md B-6: POST /api/checkout crashed live with "'E' is an invalid start of a
+        // value" right after silpo_get_my_certificates succeeded (per McpCalls log) - dump it raw
+        // to see the actual shape/text CheckoutCascade's unguarded JsonDocument.Parse choked on.
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_premium_subscription (raw) ===");
+        var premium = await client.CallToolAsync("silpo_get_my_premium_subscription", new Dictionary<string, object?>());
+        Console.WriteLine(premium);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_certificates (raw) ===");
+        var certificates = await client.CallToolAsync("silpo_get_my_certificates", new Dictionary<string, object?>());
+        Console.WriteLine(certificates);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_promo_codes (raw) ===");
+        try
+        {
+            var promoCodes = await client.CallToolAsync("silpo_get_promo_codes", new Dictionary<string, object?>());
+            Console.WriteLine(promoCodes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
         Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_profile (raw) ===");
         var profile = await client.CallToolAsync("silpo_get_my_profile", new Dictionary<string, object?>());

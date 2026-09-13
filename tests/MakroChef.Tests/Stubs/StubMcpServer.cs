@@ -155,19 +155,16 @@ public static class StubTools
             .Where(id => StubCartState.OutOfStock.Contains(id))
             .Select(id => "{\"message\":\"product.offer.status.not_available\",\"context\":{\"productId\":\"" + id + "\"}}");
 
-        var links = StubCartState.CheckoutReady
-            ? ",\"checkoutWebLink\":\"https://silpo.ua/checkout/abc\",\"checkoutMobileLink\":\"silpo://checkout/abc\""
-            : "";
-
         // Real shape (confirmed live 2026-09-14): wrapped in "cart", shipments[].products[],
         // calculation.validations[]/totalAfterDiscounts. branchId/deliveryType/timeslot are
-        // fixed stub values for SessionBootstrap tests (gate 3.3).
+        // fixed stub values for SessionBootstrap tests (gate 3.3). Root-level "loyalty" (not
+        // checkoutWebLink/checkoutMobileLink, which no real cart ever carries - B-6, 2026-09-14)
+        // is where the real bonusAvailable number lives; CheckoutCascade reads it from here.
         return "{\"cart\":{\"id\":\"stub-cart-1\",\"deliveryType\":\"SelfPickup\"," +
                "\"timeslot\":{\"start\":\"2026-09-14T06:00:00+00:00\",\"end\":\"2026-09-14T06:30:00+00:00\"}," +
                "\"shipments\":[{\"branchId\":\"stub-branch-1\",\"products\":[" + string.Join(",", products) + "]}]," +
-               "\"calculation\":{\"totalAfterDiscounts\":0,\"validations\":[" + string.Join(",", validations) + "]}}" +
-               links + "}";
-        // note: root object opened by the leading '{' above is closed by the final '}' after `links`
+               "\"calculation\":{\"totalAfterDiscounts\":0,\"validations\":[" + string.Join(",", validations) + "]}}," +
+               "\"loyalty\":{\"bonusAvailable\":275.5,\"bonusRequested\":null,\"isEnabled\":true}}";
     }
 
     [McpServerTool(Name = "silpo_get_my_shopping_cart"), Description("Stub cart for gate 3.3.")]

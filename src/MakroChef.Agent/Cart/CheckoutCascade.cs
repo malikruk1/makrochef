@@ -10,7 +10,17 @@ namespace MakroChef.Agent.Cart;
 /// Confirmed live (2026-09-14): silpo_get_shopping_cart_by_id requires shoppingCartId (same
 /// discovery as BasketAssembler/CoverageProbe) — the final read here called it with no arguments
 /// and would fail validation on any real cart. silpo_update_shopping_cart is cart-scoped the same
-/// way, so shoppingCartId is threaded through that call too.</summary>
+/// way, so shoppingCartId is threaded through that call too.
+///
+/// B-6 human eye-check done live (2026-09-14): (1) silpo_get_loyalty_info's bonusAvailable never
+/// actually exists there (confirmed shape is only loyalty.balance.total) — the REAL bonusAvailable
+/// number lives on get_shopping_cart_by_id's own root-level "loyalty" object
+/// (<c>{"cart":{...},"loyalty":{"bonusAvailable":8.09,...}}</c>). Fixed by reading bonus info from
+/// the cart response instead. (2) There is no checkoutWebLink/checkoutMobileLink anywhere in a
+/// real cart response, and no silpo_checkout/place_order/pay tool exists in tools/list at all —
+/// that field was an invented guess, never confirmed. The MCP surface can prepare and validate a
+/// cart but cannot hand back a magic checkout link; CheckoutLinks now honestly carries the cart's
+/// blocking Validations instead so the guest/UI knows to finish payment in the Silpo app itself.</summary>
 public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext session)
 {
     public async Task<CheckoutLinks> RunAsync(Func<decimal, Task<bool>> confirmApplyBonus, CancellationToken cancellationToken = default)
@@ -44,9 +54,10 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
                 cancellationToken);
         }
 
-        // d) Bonus balance - ask, never apply silently
-        var loyaltyJson = await mcpClient.CallToolAsync("silpo_get_loyalty_info", emptyArgs, cancellationToken);
-        var (bonusAvailable, bonusRequested, isEnabled) = ParseLoyalty(loyaltyJson);
+        // d) Bonus balance - ask, never apply silently. Read from the cart itself (confirmed live
+        // 2026-09-14), not silpo_get_loyalty_info, whose real shape never carries bonusAvailable.
+        var cartForLoyaltyJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", cartArgs, cancellationToken);
+        var (bonusAvailable, bonusRequested, isEnabled) = ParseLoyalty(cartForLoyaltyJson);
         if (bonusAvailable > 0 && bonusRequested is null && isEnabled && await confirmApplyBonus(bonusAvailable))
         {
             await mcpClient.CallToolAsync(
@@ -55,10 +66,15 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
                 cancellationToken);
         }
 
-        // e) Final read -> checkout links
+        // e) Final read -> real cart total + any blocking validations (no real checkout link
+        // exists to hand back - see class summary).
         var cartJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", cartArgs, cancellationToken);
         var cartState = CartResponseParser.Parse(cartJson);
-        return ExtractCheckoutLinks(cartJson) with { TotalKopecks = cartState.TotalKopecks };
+        return new CheckoutLinks(
+            WebLink: null,
+            MobileLink: null,
+            TotalKopecks: cartState.TotalKopecks,
+            BlockingValidations: cartState.Validations.Select(v => v.Reason).Distinct().ToList());
     }
 
     private static List<string> ExtractIds(string json, string idKey)
@@ -139,19 +155,21 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
         return bestCode;
     }
 
-    private static (decimal Available, decimal? Requested, bool IsEnabled) ParseLoyalty(string json)
+    /// <summary>Confirmed live (2026-09-14): the real bonusAvailable number lives on
+    /// get_shopping_cart_by_id's root-level "loyalty" object
+    /// (<c>{"cart":{...},"loyalty":{"bonusAvailable":8.09,"bonusTotal":8.09,"bonusRequested":null,"isEnabled":true}}</c>),
+    /// not inside get_loyalty_info's response (that one only ever carries loyalty.balance.total -
+    /// no bonusAvailable field at all). Reads the cart's root object, not get_loyalty_info's.</summary>
+    private static (decimal Available, decimal? Requested, bool IsEnabled) ParseLoyalty(string cartJson)
     {
-        var root = JsonDocument.Parse(json).RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
+        var root = JsonDocument.Parse(cartJson).RootElement;
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("loyalty", out var loyalty) || loyalty.ValueKind != JsonValueKind.Object)
         {
             return (0, null, false);
         }
 
-        // Real get_loyalty_info wraps everything in "loyalty" (confirmed live 2026-09-14).
-        var loyalty = root.TryGetProperty("loyalty", out var l) && l.ValueKind == JsonValueKind.Object ? l : root;
-
         decimal available = 0;
-        foreach (var key in new[] { "bonusAvailable", "bonusBalance", "balance" })
+        foreach (var key in new[] { "bonusAvailable", "bonusTotal", "bonusBalance", "balance" })
         {
             if (loyalty.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number)
             {
@@ -167,19 +185,5 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
         var isEnabled = !loyalty.TryGetProperty("isEnabled", out var enabledValue) || enabledValue.ValueKind != JsonValueKind.False;
 
         return (available, requested, isEnabled);
-    }
-
-    private static CheckoutLinks ExtractCheckoutLinks(string json)
-    {
-        var root = JsonDocument.Parse(json).RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            return new CheckoutLinks(null, null);
-        }
-
-        string? webLink = root.TryGetProperty("checkoutWebLink", out var web) && web.ValueKind == JsonValueKind.String ? web.GetString() : null;
-        string? mobileLink = root.TryGetProperty("checkoutMobileLink", out var mobile) && mobile.ValueKind == JsonValueKind.String ? mobile.GetString() : null;
-
-        return new CheckoutLinks(webLink, mobileLink);
     }
 }

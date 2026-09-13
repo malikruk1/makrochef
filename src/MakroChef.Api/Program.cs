@@ -445,6 +445,10 @@ app.MapPost("/api/checkout", async (MakroChefDbContext db, CheckoutRequest? body
         totalAfterDiscounts = links.TotalKopecks / 100m,
         bonusOffered,
         bonusApplied = applyBonus && bonusOffered is not null,
+        // B-6 (2026-09-14): there is no real checkout link - the MCP surface has no
+        // checkout/place_order/pay tool at all. These are the cart's own validation messages
+        // telling the guest why payment can't be finished yet (e.g. an item went out of stock).
+        blockingValidations = links.BlockingValidations ?? [],
     });
 });
 
