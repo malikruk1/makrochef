@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using MakroChef.Data;
+using MakroChef.Domain.Entities;
 using MakroChef.Domain.OAuth;
 using MakroChef.Mcp.OAuth;
 
@@ -11,7 +13,7 @@ namespace MakroChef.Api.Commands;
 /// and printed as one clear line, never a raw stack trace.</summary>
 public static class AuthCommand
 {
-    public static async Task<int> RunAsync(Uri mcpBaseUri)
+    public static async Task<int> RunAsync(Uri mcpBaseUri, Guid userId, EfMcpTokenStore tokenStore, TokenEncryptor tokenEncryptor)
     {
         try
         {
@@ -49,8 +51,20 @@ public static class AuthCommand
             var token = await new TokenExchangeClient(httpClient)
                 .ExchangeCodeAsync(metadata.TokenEndpoint, registration.ClientId, code, redirectUri, pkce.CodeVerifier);
 
-            Console.WriteLine($"Готово. access_token отримано, дійсний {token.ExpiresInSeconds}с. " +
-                               "Збереження в Postgres підключається разом із живим прогоном (B-2).");
+            var encryptedAccess = tokenEncryptor.Encrypt(token.AccessToken);
+            var encryptedRefresh = tokenEncryptor.Encrypt(token.RefreshToken ?? "");
+
+            await tokenStore.UpsertAsync(new McpToken
+            {
+                UserId = userId,
+                EncryptedAccessToken = encryptedAccess.Ciphertext,
+                AccessTokenNonce = encryptedAccess.Nonce,
+                EncryptedRefreshToken = encryptedRefresh.Ciphertext,
+                RefreshTokenNonce = encryptedRefresh.Nonce,
+                ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresInSeconds),
+            });
+
+            Console.WriteLine($"Готово. access_token отримано й збережено в Postgres (AES-GCM), дійсний {token.ExpiresInSeconds}с.");
             return 0;
         }
         catch (Exception ex)

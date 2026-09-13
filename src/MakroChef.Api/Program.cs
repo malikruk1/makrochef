@@ -6,8 +6,17 @@ using Microsoft.EntityFrameworkCore;
 
 if (args is ["auth"])
 {
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
     var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
-    return await AuthCommand.RunAsync(mcpBaseUri);
+    var authConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+        ?? "Host=localhost;Database=makrochef;Username=postgres;Password=postgres";
+    var authEncryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    using var authDb = new MakroChefDbContext(new DbContextOptionsBuilder<MakroChefDbContext>().UseNpgsql(authConnectionString).Options);
+    var authTokenStore = new EfMcpTokenStore(authDb);
+    var authTokenEncryptor = new TokenEncryptor(authEncryptionKey);
+
+    return await AuthCommand.RunAsync(mcpBaseUri, devUserId, authTokenStore, authTokenEncryptor);
 }
 
 if (args is ["probe"])
