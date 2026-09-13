@@ -8,4 +8,7 @@ public record ProductDetails(
     long PriceKopecks,
     bool OnPromotion,
     string? Barcode,
-    decimal WeightGrams);
+    decimal WeightGrams,
+    // Confirmed live (2026-09-14): real get_product_details carries "name" at the product root
+    // (e.g. "Снеки Чікенззз Peri-Peri з м'ясом птиці в/к") - null when absent/unparseable.
+    string? Name = null);

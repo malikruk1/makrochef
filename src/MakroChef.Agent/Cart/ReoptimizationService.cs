@@ -125,7 +125,8 @@ public class ReoptimizationService(
                 ProteinMg: (long)Math.Round((nutrients.ProteinPer100g ?? 0) * weightFactor * 1000),
                 SugarMg: (long)Math.Round((nutrients.SugarPer100g ?? 0) * weightFactor * 1000),
                 Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
-                Restricted: false);
+                Restricted: false,
+                Name: details.Name);
         }
         catch (Exception)
         {

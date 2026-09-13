@@ -1,3 +1,3 @@
 namespace MakroChef.Domain.Cart;
 
-public record CartLine(string ProductId, int Quantity);
+public record CartLine(string ProductId, int Quantity, string? Name = null);

@@ -13,6 +13,7 @@ public static class ProductDetailsParser
     private static readonly string[] PriceKeys = ["price", "priceKopecks", "priceAfterDiscount", "discountedPrice"];
     private static readonly string[] PromotionKeys = ["onPromotion", "isPromotion", "hasDiscount"];
     private static readonly string[] BarcodeKeys = ["barcode", "ean", "gtin"];
+    private static readonly string[] NameKeys = ["name", "title"];
     private const decimal DefaultWeightGrams = 100m; // fallback when displayRatio isn't a parseable "<number>г" (e.g. "10 шт")
 
     public static ProductDetails Parse(string productId, string json)
@@ -32,8 +33,9 @@ public static class ProductDetailsParser
         var onPromotion = ReadBool(product, PromotionKeys) || HasDiscount(product);
         var barcode = ReadString(product, BarcodeKeys);
         var weight = ParseWeightFromDisplayRatio(ReadString(product, ["displayRatio", "ratio"])) ?? DefaultWeightGrams;
+        var name = ReadString(product, NameKeys);
 
-        return new ProductDetails(productId, category, price, onPromotion, barcode, weight);
+        return new ProductDetails(productId, category, price, onPromotion, barcode, weight, name);
     }
 
     /// <summary>"500г" -> 500, "900г" -> 900, "10 шт" -> not parseable (returns null, caller falls

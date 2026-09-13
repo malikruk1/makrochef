@@ -139,7 +139,8 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
                 ProteinMg: ToMilligrams(nutrients.ProteinPer100g, weightFactor),
                 SugarMg: ToMilligrams(nutrients.SugarPer100g, weightFactor),
                 Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
-                Restricted: restricted);
+                Restricted: restricted,
+                Name: details.Name);
         }
         catch (Exception)
         {

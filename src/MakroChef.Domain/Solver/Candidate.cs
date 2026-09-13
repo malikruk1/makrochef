@@ -11,4 +11,7 @@ public record Candidate(
     long SugarMg,
     long Kcal,
     bool Restricted,
-    int MaxUnits = 4);
+    int MaxUnits = 4,
+    // Confirmed live (2026-09-14): real get_product_details carries a human-readable "name" -
+    // null only for stub fixtures/tests that don't bother setting one.
+    string? Name = null);

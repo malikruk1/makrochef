@@ -190,6 +190,8 @@ app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
         });
     }
 
+    var nameByProductId = plan.Request.Candidates.ToDictionary(c => c.ProductId, c => c.Name);
+
     return Results.Ok(new
     {
         success = true,
@@ -198,7 +200,7 @@ app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
         totalProteinGrams = plan.Solver.TotalProteinMg / 1000m,
         totalSugarGrams = plan.Solver.TotalSugarMg / 1000m,
         totalKcal = plan.Solver.TotalKcal,
-        lines = plan.Solver.Lines.Select(l => new { productId = l.ProductId, units = l.Units }),
+        lines = plan.Solver.Lines.Select(l => new { productId = l.ProductId, name = nameByProductId.GetValueOrDefault(l.ProductId), units = l.Units }),
         relaxed = plan.Solver.Relaxed,
         candidatePoolSize = plan.CandidatePoolSize,
         coveragePercent = plan.Coverage.CoveragePercent,
@@ -292,7 +294,7 @@ app.MapPost("/api/basket/apply", async (MakroChefDbContext db, BasketSolver solv
     return Results.Ok(new
     {
         success = true,
-        lines = finalCart.Lines.Select(l => new { productId = l.ProductId, quantity = l.Quantity }),
+        lines = finalCart.Lines.Select(l => new { productId = l.ProductId, name = l.Name, quantity = l.Quantity }),
         totalAfterDiscounts = finalCart.TotalKopecks / 100m,
         validations = finalCart.Validations.Select(v => new { productId = v.ProductId, reason = v.Reason, isOutOfStock = v.IsOutOfStock }),
     });
@@ -370,6 +372,10 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
     var oldIds = currentCart.Lines.Select(l => l.ProductId).ToHashSet();
     var newIds = result.FinalCart.Lines.Select(l => l.ProductId).ToHashSet();
     var diffCount = oldIds.Except(newIds).Count() + newIds.Except(oldIds).Count();
+    // Best-effort: names for products the reoptimizer added fresh (not in the original pool)
+    // aren't resolved here - falls back to null (UI shows the productId), honest rather than an
+    // extra round of MCP calls just for display.
+    var nameByProductId = plan.Request.Candidates.ToDictionary(c => c.ProductId, c => c.Name);
 
     return Results.Ok(new
     {
@@ -379,7 +385,7 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
         iterations = result.Iterations,
         degradedNotes = result.DegradedNotes,
         newBasketDiffCount = diffCount,
-        lines = result.FinalCart.Lines.Select(l => new { productId = l.ProductId, quantity = l.Quantity }),
+        lines = result.FinalCart.Lines.Select(l => new { productId = l.ProductId, name = nameByProductId.GetValueOrDefault(l.ProductId), quantity = l.Quantity }),
         totalAfterDiscounts = result.FinalCart.TotalKopecks / 100m,
     });
 });

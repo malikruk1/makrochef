@@ -87,7 +87,8 @@ public static class CartResponseParser
             return;
         }
 
-        lines.Add(new CartLine(productId, (int)Math.Round(quantity.Value)));
+        var name = ReadString(item, ["name", "title"]);
+        lines.Add(new CartLine(productId, (int)Math.Round(quantity.Value), name));
     }
 
     private static void TryParseAsValidation(JsonElement item, List<CartValidationIssue> validations)

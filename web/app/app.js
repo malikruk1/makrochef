@@ -134,7 +134,7 @@ async function renderLiveBasket() {
 
   const lines = b.lines.map(l => `
     <div class="swap-row">
-      <div class="swap-old">${l.productId}</div>
+      <div class="swap-old">${l.name || l.productId}</div>
       <div class="swap-new">× ${l.units}</div>
     </div>`).join("");
   const relaxedLine = b.relaxed.length > 0
@@ -236,7 +236,7 @@ async function renderLiveReoptimization() {
     <div class="section-title">Новий кошик</div>
     <div class="compare-card">${r.lines.map(l => `
       <div class="swap-row">
-        <div class="swap-old">${l.productId}</div>
+        <div class="swap-old">${l.name || l.productId}</div>
         <div class="swap-new">× ${l.quantity}</div>
       </div>`).join("")}</div>
     <p style="font-size:12px;color:var(--text-muted)">До сплати: ${r.totalAfterDiscounts.toFixed(2)} ₴</p>
