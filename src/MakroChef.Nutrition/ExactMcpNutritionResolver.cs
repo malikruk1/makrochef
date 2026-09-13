@@ -62,7 +62,16 @@ public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient, SessionCon
         var protein = ReadAttributeNumber(attributes, "Білки");
         var fat = ReadAttributeNumber(attributes, "Жири");
         var carbs = ReadAttributeNumber(attributes, "Вуглеводи");
-        var sugar = ReadAttributeNumber(attributes, "цукри"); // best guess: "У тому числі цукри (г)" is the common label pattern, unconfirmed live
+        // Confirmed live (2026-09-14, real product via `dotnet run -- diag`): a product can
+        // simply have no sugar attribute at all (this sample's keys were Країна/Торгова марка/
+        // Продавець/Енергетична цінність (кКал/кДЖ)/Білки (г)/Жири (г)/Вуглеводи (г) - no
+        // "цукри" key at all). Sugar staying null in that case is correct, not a parsing bug -
+        // kept as a best-effort substring match for products that do carry one.
+        var sugar = ReadAttributeNumber(attributes, "цукри");
+        // Confirmed live: the real key is "Енергетична цінність (кКал/кДЖ)" (substring match
+        // already handles that) but the value is a STRING like "502,3/2101,6" - Ukrainian
+        // comma-decimal formatting, not "241/1013" as originally guessed. ParseKcalFromEnergyLabel
+        // normalizes the comma before parsing.
         var kcal = ParseKcalFromEnergyLabel(ReadAttributeString(attributes, "Енергетична цінність"));
 
         return (protein, fat, carbs, sugar, kcal);
@@ -82,7 +91,12 @@ public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient, SessionCon
                 return prop.Value.GetDecimal();
             }
 
-            if (prop.Value.ValueKind == JsonValueKind.String && decimal.TryParse(prop.Value.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+            // Confirmed live (2026-09-14): string-typed attribute values use Ukrainian
+            // comma-decimal formatting ("502,3"), not a dot. Parsing "502,3" as InvariantCulture
+            // without normalizing first can silently produce 5023 instead of 502.3 (comma reads
+            // as a thousands separator) - a real, dangerous parsing bug, not just an edge case.
+            if (prop.Value.ValueKind == JsonValueKind.String
+                && decimal.TryParse(prop.Value.GetString()?.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
             {
                 return parsed;
             }
@@ -111,7 +125,9 @@ public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient, SessionCon
             return null;
         }
 
-        var kcalPart = label.Split('/')[0].Trim();
+        // Confirmed live (2026-09-14): "502,3/2101,6" - comma decimal separator, same bug risk as
+        // ReadAttributeNumber's string fallback.
+        var kcalPart = label.Split('/')[0].Trim().Replace(',', '.');
         return decimal.TryParse(kcalPart, NumberStyles.Any, CultureInfo.InvariantCulture, out var kcal) ? kcal : null;
     }
 }

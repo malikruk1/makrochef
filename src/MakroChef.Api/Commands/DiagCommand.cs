@@ -1,3 +1,6 @@
+using System.Text.Json;
+using MakroChef.Agent.Cart;
+using MakroChef.Agent.Coverage;
 using MakroChef.Data;
 using MakroChef.Mcp;
 using MakroChef.Mcp.OAuth;
@@ -50,42 +53,60 @@ public static class DiagCommand
             Console.WriteLine("(no cart id)");
         }
 
+        // B-5: don't hardcode branchId/slug from a stale prior session - bootstrap a real one
+        // and pull a real historical product id, so this dump reflects the account's actual
+        // current session and an actual purchased SKU, not a possibly-expired one.
         Console.WriteLine();
-        Console.WriteLine("=== silpo_get_product_details (raw, branchId+slug from the live cart) ===");
-        try
+        Console.WriteLine("=== SessionBootstrap ===");
+        var session = await new SessionBootstrap(client).EnsureAsync();
+        if (session is null)
         {
-            var details = await client.CallToolAsync(
-                "silpo_get_product_details",
-                new Dictionary<string, object?>
-                {
-                    ["branchId"] = "1ef86dfb-5d4d-6a20-9377-494ed979998f",
-                    ["deliveryType"] = "SelfPickup",
-                    ["timeslotStart"] = "2026-09-14T06:00:00+00:00",
-                    ["timeslotEnd"] = "2026-09-14T06:30:00+00:00",
-                    ["slug"] = "pitsa-amerykana-747288",
-                });
-            Console.WriteLine(details);
+            Console.WriteLine("(no cart/session available - can't continue product-details diag)");
+            return 0;
         }
-        catch (Exception ex)
+
+        Console.WriteLine($"branchId={session.BranchId} deliveryType={session.DeliveryType} timeslot={session.TimeslotStart}..{session.TimeslotEnd}");
+
+        var sessionArgs = new Dictionary<string, object?>
         {
-            Console.WriteLine($"ERROR: {ex.Message}");
+            ["branchId"] = session.BranchId,
+            ["deliveryType"] = session.DeliveryType,
+            ["timeslotStart"] = session.TimeslotStart,
+            ["timeslotEnd"] = session.TimeslotEnd,
+        };
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_offline_orders (raw, with session args) ===");
+        var offline = await client.CallToolAsync("silpo_get_my_offline_orders", sessionArgs);
+        Console.WriteLine(offline);
+
+        var productIds = JsonFieldScanner.ExtractProductIds(offline);
+        var sampleProductId = productIds.FirstOrDefault();
+        if (sampleProductId is null)
+        {
+            Console.WriteLine("(no product ids found in offline orders - can't continue product-details diag)");
+            return 0;
         }
 
         Console.WriteLine();
-        Console.WriteLine("=== silpo_find_products_batch (raw, search 'молоко') ===");
+        Console.WriteLine($"=== silpo_find_products_batch (raw, real historical productId={sampleProductId}) ===");
+        var batchArgs = new Dictionary<string, object?>(sessionArgs) { ["products"] = new[] { sampleProductId } };
+        var batch = await client.CallToolAsync("silpo_find_products_batch", batchArgs);
+        Console.WriteLine(batch);
+
+        var slug = JsonFieldScanner.ExtractProductSlugs(batch).GetValueOrDefault(sampleProductId) ?? sampleProductId;
+
+        Console.WriteLine();
+        Console.WriteLine($"=== silpo_get_product_details (raw, real slug={slug}) ===");
+        var detailsArgs = new Dictionary<string, object?>(sessionArgs) { ["slug"] = slug };
         try
         {
-            var batch = await client.CallToolAsync(
-                "silpo_find_products_batch",
-                new Dictionary<string, object?>
-                {
-                    ["branchId"] = "1ef86dfb-5d4d-6a20-9377-494ed979998f",
-                    ["deliveryType"] = "SelfPickup",
-                    ["timeslotStart"] = "2026-09-14T06:00:00+00:00",
-                    ["timeslotEnd"] = "2026-09-14T06:30:00+00:00",
-                    ["products"] = new[] { "молоко" },
-                });
-            Console.WriteLine(batch);
+            var details = await client.CallToolAsync("silpo_get_product_details", detailsArgs);
+            Console.WriteLine(details);
+
+            Console.WriteLine();
+            Console.WriteLine("=== product.attributes keys (this is what B-5 needs) ===");
+            PrintAttributeKeys(details);
         }
         catch (Exception ex)
         {
@@ -108,10 +129,10 @@ public static class DiagCommand
         Console.WriteLine(addresses);
 
         Console.WriteLine();
-        Console.WriteLine("=== silpo_get_my_online_orders (raw, no args) ===");
+        Console.WriteLine("=== silpo_get_my_online_orders (raw, with session args) ===");
         try
         {
-            var online = await client.CallToolAsync("silpo_get_my_online_orders", new Dictionary<string, object?>());
+            var online = await client.CallToolAsync("silpo_get_my_online_orders", sessionArgs);
             Console.WriteLine(online);
         }
         catch (Exception ex)
@@ -120,6 +141,28 @@ public static class DiagCommand
         }
 
         return 0;
+    }
+
+    /// <summary>B-5: dump the exact attribute keys/values a real product carries so
+    /// ExactMcpNutritionResolver.ParseNutrients can match them precisely instead of guessing
+    /// substrings ("цукри" was an unconfirmed guess - see BLOCKERS.md #11).</summary>
+    private static void PrintAttributeKeys(string productDetailsJson)
+    {
+        var root = JsonDocument.Parse(productDetailsJson).RootElement;
+        var product = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("product", out var p) && p.ValueKind == JsonValueKind.Object
+            ? p
+            : root;
+
+        if (product.ValueKind != JsonValueKind.Object || !product.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object)
+        {
+            Console.WriteLine("(no product.attributes object found)");
+            return;
+        }
+
+        foreach (var prop in attributes.EnumerateObject())
+        {
+            Console.WriteLine($"  \"{prop.Name}\" = {prop.Value}");
+        }
     }
 
     private class StaticTokenProvider(string token) : IMcpAuthTokenProvider
