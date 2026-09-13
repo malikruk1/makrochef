@@ -1,3 +1,5 @@
 .env
 bin/
 obj/
+winget-upgrade.log
+docker-features-check.txt
