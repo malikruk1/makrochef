@@ -49,11 +49,11 @@ public class CheckoutCascadeTests
         var expectedOrder = new[]
         {
             "silpo_get_my_premium_subscription",
+            "silpo_get_shopping_cart_by_id", // fetched once up front: silpo_update_shopping_cart needs deliveryType/timeslot/address/shipments + bonusAvailable lives here too
             "silpo_get_my_certificates",
             "silpo_add_or_update_certificates",
             "silpo_get_promo_codes",
             "silpo_update_shopping_cart", // promo code
-            "silpo_get_shopping_cart_by_id", // loyalty read (confirmed live: bonusAvailable lives here, not get_loyalty_info)
             "silpo_update_shopping_cart", // bonus
             "silpo_get_shopping_cart_by_id", // final read
         };

@@ -40,8 +40,8 @@ public static class DiagCommand
         // returning success - dump the exact input schema for both so the real required
         // shape/argument names (not just prose description) can be confirmed.
         Console.WriteLine();
-        Console.WriteLine("=== input schemas: silpo_remove_cart_products / silpo_add_or_update_cart_products ===");
-        foreach (var tool in tools.Where(t => t.Name is "silpo_remove_cart_products" or "silpo_add_or_update_cart_products"))
+        Console.WriteLine("=== input schemas: silpo_remove_cart_products / silpo_add_or_update_cart_products / silpo_update_shopping_cart / silpo_add_or_update_certificates ===");
+        foreach (var tool in tools.Where(t => t.Name is "silpo_remove_cart_products" or "silpo_add_or_update_cart_products" or "silpo_update_shopping_cart" or "silpo_add_or_update_certificates"))
         {
             Console.WriteLine($"--- {tool.Name} ---");
             Console.WriteLine(tool.InputSchemaJson);

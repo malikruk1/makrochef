@@ -164,9 +164,13 @@ public static class StubTools
         // fixed stub values for SessionBootstrap tests (gate 3.3). Root-level "loyalty" (not
         // checkoutWebLink/checkoutMobileLink, which no real cart ever carries - B-6, 2026-09-14)
         // is where the real bonusAvailable number lives; CheckoutCascade reads it from here.
+        // "address" included because silpo_update_shopping_cart requires it (alongside
+        // deliveryType/timeslot/shipments) verbatim from the cart on every call - confirmed via
+        // its real input schema (2026-09-14); CheckoutCascade now copies all four through.
         return "{\"cart\":{\"id\":\"stub-cart-1\",\"deliveryType\":\"SelfPickup\"," +
                "\"timeslot\":{\"start\":\"2026-09-14T06:00:00+00:00\",\"end\":\"2026-09-14T06:30:00+00:00\"}," +
-               "\"shipments\":[{\"branchId\":\"stub-branch-1\",\"products\":[" + string.Join(",", products) + "]}]," +
+               "\"address\":{\"addressType\":\"self-pickup\",\"latitude\":\"50.0\",\"longitude\":\"30.0\"}," +
+               "\"shipments\":[{\"branchId\":\"stub-branch-1\",\"companyId\":\"stub-company-1\",\"products\":[" + string.Join(",", products) + "]}]," +
                "\"calculation\":{\"totalAfterDiscounts\":0,\"validations\":[" + string.Join(",", validations) + "]}}," +
                "\"loyalty\":{\"bonusAvailable\":275.5,\"bonusRequested\":null,\"isEnabled\":true}}";
     }
@@ -178,10 +182,12 @@ public static class StubTools
     public static string GetMyPremiumSubscription() => """{"isPremium":false}""";
 
     [McpServerTool(Name = "silpo_get_my_certificates"), Description("Stub fixture for gate 7.3.")]
-    public static string GetMyCertificates() => """[{"certificateId":"cert-1"}]""";
+    // Real key is "barcode" (confirmed via silpo_add_or_update_certificates' input schema,
+    // 2026-09-14), not the guessed "certificateId".
+    public static string GetMyCertificates() => """[{"barcode":"cert-barcode-1"}]""";
 
     [McpServerTool(Name = "silpo_add_or_update_certificates"), Description("Stub cart for gate 7.3.")]
-    public static string AddOrUpdateCertificates() { StubCartState.CheckoutReady = true; return """{"success":true}"""; }
+    public static string AddOrUpdateCertificates(object? certificatesToAdd = null) { StubCartState.CheckoutReady = true; return """{"success":true}"""; }
 
     [McpServerTool(Name = "silpo_get_promo_codes"), Description("Stub fixture for gate 7.3.")]
     public static string GetPromoCodes() => """[{"code":"SAVE5","discountAmount":5},{"code":"SAVE20","discountAmount":20}]""";

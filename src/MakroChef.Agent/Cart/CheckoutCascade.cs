@@ -20,7 +20,15 @@ namespace MakroChef.Agent.Cart;
 /// real cart response, and no silpo_checkout/place_order/pay tool exists in tools/list at all —
 /// that field was an invented guess, never confirmed. The MCP surface can prepare and validate a
 /// cart but cannot hand back a magic checkout link; CheckoutLinks now honestly carries the cart's
-/// blocking Validations instead so the guest/UI knows to finish payment in the Silpo app itself.</summary>
+/// blocking Validations instead so the guest/UI knows to finish payment in the Silpo app itself.
+///
+/// Confirmed live (2026-09-14) via the tools' own JSON input schema: silpo_update_shopping_cart
+/// REQUIRES deliveryType+timeslot+address+shipments on every call (not just shoppingCartId+the
+/// one field being changed, as originally assumed) — its own description says to copy these
+/// verbatim from the current cart response, never construct them. Every previous promo/bonus call
+/// here omitted them and would fail validation (or be silently rejected), so the promo code and
+/// bonus were likely never actually applied. Also: silpo_add_or_update_certificates takes
+/// certificatesToAdd:[{barcode,pincode?}], not the guessed certificateIds:[...] shape.</summary>
 public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext session)
 {
     public async Task<CheckoutLinks> RunAsync(Func<decimal, Task<bool>> confirmApplyBonus, CancellationToken cancellationToken = default)
@@ -32,37 +40,46 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
         // it first so everything downstream accounts for it.
         await mcpClient.CallToolAsync("silpo_get_my_premium_subscription", emptyArgs, cancellationToken);
 
-        // b) Certificates
+        // Fetch once, up front: silpo_update_shopping_cart requires deliveryType/timeslot/
+        // address/shipments verbatim on every call (confirmed via its real input schema), and the
+        // real bonusAvailable also lives here (root "loyalty"), not in get_loyalty_info.
+        var initialCartJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", cartArgs, cancellationToken);
+        var cartFields = ExtractRequiredCartFields(initialCartJson);
+
+        // b) Certificates - real shape is certificatesToAdd:[{barcode,pincode?}], not
+        // certificateIds:[...] as originally guessed.
         var certificatesJson = await mcpClient.CallToolAsync("silpo_get_my_certificates", emptyArgs, cancellationToken);
-        var certificateIds = ExtractIds(certificatesJson, "certificateId");
-        if (certificateIds.Count > 0)
+        var barcodes = ExtractCertificateBarcodes(certificatesJson);
+        if (barcodes.Count > 0)
         {
             await mcpClient.CallToolAsync(
                 "silpo_add_or_update_certificates",
-                new Dictionary<string, object?> { ["certificateIds"] = certificateIds },
+                new Dictionary<string, object?>
+                {
+                    ["shoppingCartId"] = session.ShoppingCartId,
+                    ["certificatesToAdd"] = barcodes.Select(b => new Dictionary<string, object?> { ["barcode"] = b }).ToList(),
+                },
                 cancellationToken);
         }
 
         // c) Most advantageous promo code
         var promoCodesJson = await mcpClient.CallToolAsync("silpo_get_promo_codes", emptyArgs, cancellationToken);
         var bestPromoCode = ExtractBestPromoCode(promoCodesJson);
-        if (bestPromoCode is not null)
+        if (bestPromoCode is not null && cartFields is not null)
         {
             await mcpClient.CallToolAsync(
                 "silpo_update_shopping_cart",
-                new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId, ["promoCode"] = bestPromoCode },
+                cartFields.ToArgs(session.ShoppingCartId, ("promoCode", bestPromoCode)),
                 cancellationToken);
         }
 
-        // d) Bonus balance - ask, never apply silently. Read from the cart itself (confirmed live
-        // 2026-09-14), not silpo_get_loyalty_info, whose real shape never carries bonusAvailable.
-        var cartForLoyaltyJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", cartArgs, cancellationToken);
-        var (bonusAvailable, bonusRequested, isEnabled) = ParseLoyalty(cartForLoyaltyJson);
-        if (bonusAvailable > 0 && bonusRequested is null && isEnabled && await confirmApplyBonus(bonusAvailable))
+        // d) Bonus balance - ask, never apply silently.
+        var (bonusAvailable, bonusRequested, isEnabled) = ParseLoyalty(initialCartJson);
+        if (bonusAvailable > 0 && bonusRequested is null && isEnabled && cartFields is not null && await confirmApplyBonus(bonusAvailable))
         {
             await mcpClient.CallToolAsync(
                 "silpo_update_shopping_cart",
-                new Dictionary<string, object?> { ["shoppingCartId"] = session.ShoppingCartId, ["bonusRequested"] = bonusAvailable },
+                cartFields.ToArgs(session.ShoppingCartId, ("bonusRequested", bonusAvailable)),
                 cancellationToken);
         }
 
@@ -77,13 +94,51 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
             BlockingValidations: cartState.Validations.Select(v => v.Reason).Distinct().ToList());
     }
 
-    private static List<string> ExtractIds(string json, string idKey)
+    /// <summary>silpo_update_shopping_cart requires these four fields verbatim from the current
+    /// cart on every call - null if the cart response didn't have all of them (e.g. malformed/
+    /// unexpected shape), in which case promo/bonus steps are skipped rather than sending a call
+    /// guaranteed to fail validation.</summary>
+    private sealed record RequiredCartFields(JsonElement DeliveryType, JsonElement Timeslot, JsonElement Address, JsonElement Shipments)
+    {
+        public Dictionary<string, object?> ToArgs(string shoppingCartId, (string Key, object? Value) extra) => new()
+        {
+            ["shoppingCartId"] = shoppingCartId,
+            ["deliveryType"] = DeliveryType,
+            ["timeslot"] = Timeslot,
+            ["address"] = Address,
+            ["shipments"] = Shipments,
+            [extra.Key] = extra.Value,
+        };
+    }
+
+    private static RequiredCartFields? ExtractRequiredCartFields(string cartJson)
+    {
+        var root = JsonDocument.Parse(cartJson).RootElement;
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("cart", out var cart) || cart.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!cart.TryGetProperty("deliveryType", out var deliveryType) || deliveryType.ValueKind != JsonValueKind.String
+            || !cart.TryGetProperty("timeslot", out var timeslot) || timeslot.ValueKind != JsonValueKind.Object
+            || !cart.TryGetProperty("address", out var address) || address.ValueKind != JsonValueKind.Object
+            || !cart.TryGetProperty("shipments", out var shipments) || shipments.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return new RequiredCartFields(deliveryType, timeslot, address, shipments);
+    }
+
+    /// <summary>Real add_or_update_certificates shape needs "barcode" (confirmed via its input
+    /// schema), not the guessed "certificateId".</summary>
+    private static List<string> ExtractCertificateBarcodes(string json)
     {
         var root = JsonDocument.Parse(json).RootElement;
         var array = root.ValueKind == JsonValueKind.Array
             ? root
-            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
-                ? items
+            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("certificates", out var certs) && certs.ValueKind == JsonValueKind.Array
+                ? certs
                 : (JsonElement?)null;
 
         if (array is null)
@@ -91,25 +146,17 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
             return [];
         }
 
-        var ids = new List<string>();
+        var barcodes = new List<string>();
         foreach (var element in array.Value.EnumerateArray())
         {
-            if (element.ValueKind != JsonValueKind.Object)
+            if (element.ValueKind == JsonValueKind.Object
+                && element.TryGetProperty("barcode", out var barcode) && barcode.ValueKind == JsonValueKind.String)
             {
-                continue;
-            }
-
-            foreach (var key in new[] { idKey, "id" })
-            {
-                if (element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
-                {
-                    ids.Add(value.GetString()!);
-                    break;
-                }
+                barcodes.Add(barcode.GetString()!);
             }
         }
 
-        return ids;
+        return barcodes;
     }
 
     private static string? ExtractBestPromoCode(string json)
