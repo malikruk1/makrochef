@@ -18,7 +18,10 @@ namespace MakroChef.Agent.Catalog;
 /// The exact 200-400 count still needs a live account with a real catalog to fully validate at
 /// that scale (BLOCKERS.md) - this builder is complete and correct, but a stub server can't fake
 /// a whole supermarket's inventory, so local tests verify the pipeline (parsing, discounts,
-/// restrictions, nutrient conversion, slug resolution) at a smaller scale.</summary>
+/// restrictions, nutrient conversion, slug resolution) at a smaller scale.
+///
+/// Confirmed live (2026-09-14): silpo_get_products' "category" filter needs a real category slug
+/// from silpo_get_categories, not a guessed free-text word - see CategoryResolver.</summary>
 public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver, SessionContext session)
 {
     public async Task<IReadOnlyList<Candidate>> BuildAsync(CandidatePoolRequest request, CancellationToken cancellationToken = default)
@@ -41,21 +44,25 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
             MergeSlugs(slugsById, batchJson);
         }
 
-        foreach (var category in request.DeficitCategories)
+        var categoryResolver = new CategoryResolver(mcpClient, session);
+        foreach (var keyword in request.DeficitCategories)
         {
-            var productsJson = await mcpClient.CallToolAsync(
-                "silpo_get_products",
-                new Dictionary<string, object?>
-                {
-                    ["branchId"] = session.BranchId,
-                    ["deliveryType"] = session.DeliveryType,
-                    ["timeslotStart"] = session.TimeslotStart,
-                    ["timeslotEnd"] = session.TimeslotEnd,
-                    ["category"] = category,
-                    ["mustHavePromotion"] = true,
-                },
-                cancellationToken);
-            MergeSlugs(slugsById, productsJson);
+            var categorySlugs = await categoryResolver.ResolveSlugsAsync(keyword, cancellationToken);
+            foreach (var categorySlug in categorySlugs)
+            {
+                var productsJson = await mcpClient.CallToolAsync(
+                    "silpo_get_products",
+                    new Dictionary<string, object?>
+                    {
+                        ["branchId"] = session.BranchId,
+                        ["deliveryType"] = session.DeliveryType,
+                        ["timeslotStart"] = session.TimeslotStart,
+                        ["timeslotEnd"] = session.TimeslotEnd,
+                        ["category"] = categorySlug,
+                    },
+                    cancellationToken);
+                MergeSlugs(slugsById, productsJson);
+            }
         }
 
         var candidates = new List<Candidate>();

@@ -97,6 +97,15 @@ public static class StubTools
     [McpServerTool(Name = "silpo_get_products"), Description("Stub fixture for gate 6.1.")]
     public static string GetProducts(string category) => CatalogFixture.ProductsByCategory(category);
 
+    // Real silpo_get_products needs a category SLUG from silpo_get_categories, not the guessed
+    // free-text word (confirmed live, 2026-09-14 - see CategoryResolver). This stub's category
+    // titles equal their slugs equal the deficit keywords the tests already use ("сир"/"риба"/
+    // "яйця"), so CategoryResolver.ResolveSlugsAsync(keyword) resolves back to that same keyword
+    // and CandidatePoolBuilderTests keep working unchanged.
+    [McpServerTool(Name = "silpo_get_categories"), Description("Stub fixture for gate 6.1.")]
+    public static string GetCategories() =>
+        """{"success":true,"categories":[{"title":"сир","slug":"сир"},{"title":"риба","slug":"риба"},{"title":"яйця","slug":"яйця"}]}""";
+
     [McpServerTool(Name = "silpo_get_similar_products"), Description("Stub fixture for gate 6.2.")]
     public static string GetSimilarProducts(string productId) => CatalogFixture.SimilarProducts(productId);
 

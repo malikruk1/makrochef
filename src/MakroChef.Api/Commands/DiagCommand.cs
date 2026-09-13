@@ -1,9 +1,11 @@
 using System.Text.Json;
 using MakroChef.Agent.Cart;
+using MakroChef.Agent.Catalog;
 using MakroChef.Agent.Coverage;
 using MakroChef.Data;
 using MakroChef.Mcp;
 using MakroChef.Mcp.OAuth;
+using MakroChef.Nutrition;
 
 namespace MakroChef.Api.Commands;
 
@@ -138,6 +140,57 @@ public static class DiagCommand
         catch (Exception ex)
         {
             Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_categories (raw, no parent filter) ===");
+        var categories = await client.CallToolAsync("silpo_get_categories", new Dictionary<string, object?>(sessionArgs));
+        Console.WriteLine(categories);
+
+        // BLOCKERS.md #16: GET /api/basket returns candidatePoolSize:0 on the live account even
+        // with confirmed-correct nutrient keys. Reproduce CandidatePoolBuilder.ResolveCandidateAsync
+        // step by step for one real deficit category so we can see exactly which step returns
+        // null/empty, instead of just the aggregate MCP-call counts.
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_products with a REAL category slug (\"syr-kyslomolochnyi-4988\") ===");
+        var byRealSlug = await client.CallToolAsync(
+            "silpo_get_products",
+            new Dictionary<string, object?>(sessionArgs) { ["category"] = "syr-kyslomolochnyi-4988" });
+        Console.WriteLine(byRealSlug);
+
+        Console.WriteLine();
+        Console.WriteLine("=== CandidatePoolBuilder step-by-step repro (category \"сир\") ===");
+        var productsJson = await client.CallToolAsync(
+            "silpo_get_products",
+            new Dictionary<string, object?>(sessionArgs) { ["category"] = "сир" });
+        Console.WriteLine($"silpo_get_products(\"сир\") raw: {productsJson}");
+
+        var categorySlugs = JsonFieldScanner.ExtractProductSlugs(productsJson);
+        Console.WriteLine($"Extracted {categorySlugs.Count} (id, slug) pairs.");
+
+        var (repoProductId, repoSlug) = categorySlugs.FirstOrDefault();
+        if (repoProductId is null)
+        {
+            Console.WriteLine("(no id+slug pairs found in get_products response - this is why the pool is empty for this category)");
+        }
+        else
+        {
+            Console.WriteLine($"Resolving productId={repoProductId} slug={repoSlug}...");
+            var repoDetailsJson = await client.CallToolAsync("silpo_get_product_details", new Dictionary<string, object?>(sessionArgs) { ["slug"] = repoSlug });
+            Console.WriteLine($"silpo_get_product_details raw: {repoDetailsJson}");
+
+            var repoDetails = ProductDetailsParser.Parse(repoProductId, repoDetailsJson);
+            Console.WriteLine($"Parsed: category={repoDetails.Category} priceKopecks={repoDetails.PriceKopecks} weightGrams={repoDetails.WeightGrams} barcode={repoDetails.Barcode}");
+
+            var coverageForMode = await new CoverageProbe(client, session).RunAsync();
+            var mode = coverageForMode.CoveragePercent >= 60 ? NutritionResolverMode.Exact : NutritionResolverMode.CategoryIndex;
+            Console.WriteLine($"Coverage {coverageForMode.CoveragePercent:F0}% -> mode={mode}");
+            var nutritionResolver = NutritionResolverFactory.Create(mode, client, session);
+
+            var nutrients = await nutritionResolver.ResolveAsync(repoSlug, repoDetails.Barcode);
+            Console.WriteLine(nutrients is null
+                ? "nutritionResolver.ResolveAsync returned NULL - this is why ResolveCandidateAsync returns null for this product."
+                : $"nutrients: protein={nutrients.ProteinPer100g} fat={nutrients.FatPer100g} carbs={nutrients.CarbsPer100g} sugar={nutrients.SugarPer100g} kcal={nutrients.KcalPer100g} source={nutrients.Source}");
         }
 
         return 0;
