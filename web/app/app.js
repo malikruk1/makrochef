@@ -49,10 +49,14 @@ function render() {
 }
 
 // Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Screens
-// 2 and 3 are wired so far - see BLOCKERS.md for what's still needed for 4-6.
+// 2, 3 and 4 are wired so far - see BLOCKERS.md for what's still needed for 5-6.
 async function renderLive(screenId) {
   if (screenId === "3") {
     return renderLiveBasket();
+  }
+
+  if (screenId === "4") {
+    return renderLiveReoptimization();
   }
 
   if (screenId !== "2") {
@@ -158,6 +162,40 @@ async function renderLiveBasket() {
     <p style="font-size:11px;color:var(--text-muted)">
       Це лише розрахунок — товари ще не додані в реальний кошик Сільпо (окрема дія з підтвердженням, TASKS.md 7.1).
     </p>
+  `;
+}
+
+async function renderLiveReoptimization() {
+  const res = await fetch("/api/basket/reoptimize", { method: "POST" });
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const r = await res.json();
+
+  if (!r.needsReoptimization) {
+    return `<div class="state-empty">${r.message}</div>`;
+  }
+
+  const notesLine = r.degradedNotes.length > 0
+    ? `<p style="font-size:11px;color:var(--text-muted)">${r.degradedNotes.join(" ")}</p>`
+    : "";
+
+  return `
+    <h1 class="app-title">Переоптимізація (реальні дані)</h1>
+    <div class="banner"><b>${r.droppedProductIds.join(", ")}</b> — недоступно. Перерахували кошик цілком.</div>
+    <p style="font-size:13px;color:var(--text-2)">
+      Кошик відрізняється від попереднього на ${r.newBasketDiffCount} позиції за ${r.iterations} ітерацій.
+      ${r.fullyResolved ? "Дефіцит не зріс, бюджет утримано." : "Повністю розв'язати не вдалось — дивись деталі нижче."}
+    </p>
+    ${notesLine}
+    <div class="section-title">Новий кошик</div>
+    <div class="compare-card">${r.lines.map(l => `
+      <div class="swap-row">
+        <div class="swap-old">${l.productId}</div>
+        <div class="swap-new">× ${l.quantity}</div>
+      </div>`).join("")}</div>
+    <p style="font-size:12px;color:var(--text-muted)">До сплати: ${r.totalAfterDiscounts.toFixed(2)} ₴</p>
   `;
 }
 

@@ -16,4 +16,5 @@ public record BasketPlanResult(
     CoverageReport Coverage,
     int CandidatePoolSize,
     long BaselineWeeklyCostKopecks,
+    SolverRequest Request,
     SolverResult Solver);

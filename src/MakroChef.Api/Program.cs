@@ -7,6 +7,7 @@ using MakroChef.Domain.Cart;
 using MakroChef.Domain.Profile;
 using MakroChef.Mcp;
 using MakroChef.Mcp.OAuth;
+using MakroChef.Nutrition;
 using MakroChef.Solver;
 using Microsoft.EntityFrameworkCore;
 
@@ -294,6 +295,92 @@ app.MapPost("/api/basket/apply", async (MakroChefDbContext db, BasketSolver solv
         lines = finalCart.Lines.Select(l => new { productId = l.ProductId, quantity = l.Quantity }),
         totalAfterDiscounts = finalCart.TotalKopecks / 100m,
         validations = finalCart.Validations.Select(v => new { productId = v.ProductId, reason = v.Reason, isOutOfStock = v.IsOutOfStock }),
+    });
+});
+
+app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver solver) =>
+{
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+    var loggingSolver = new LoggingBasketSolver(solver, recorder);
+
+    BasketPlanResult? plan;
+    try
+    {
+        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося перерахувати план для переоптимізації: {ex.Message}", statusCode: 502);
+    }
+
+    if (plan is null)
+    {
+        return Results.Problem("У гостя ще немає кошика — переоптимізовувати нічого.", statusCode: 409);
+    }
+
+    var assembler = new BasketAssembler(mcpClient, plan.Session);
+
+    CartState currentCart;
+    try
+    {
+        currentCart = await assembler.GetCartAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося прочитати поточний кошик: {ex.Message}", statusCode: 502);
+    }
+
+    // TASKS.md 7.2: "не довіряти success: true" - only real out-of-stock validations trigger a
+    // re-solve, never a guessed/assumed one.
+    var outOfStockIds = currentCart.Validations.Where(v => v.IsOutOfStock).Select(v => v.ProductId).Distinct().ToList();
+    if (outOfStockIds.Count == 0)
+    {
+        return Results.Ok(new { needsReoptimization = false, message = "Усі позиції в кошику доступні — переоптимізація не потрібна." });
+    }
+
+    var mode = plan.Coverage.CoveragePercent >= 60 ? NutritionResolverMode.Exact : NutritionResolverMode.CategoryIndex;
+    var nutritionResolver = NutritionResolverFactory.Create(mode, mcpClient, plan.Session);
+    var reoptimizer = new ReoptimizationService(mcpClient, nutritionResolver, loggingSolver, assembler, plan.Session);
+
+    ReoptimizationResult result;
+    try
+    {
+        result = await reoptimizer.ReoptimizeAsync(plan.Request, currentCart);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Переоптимізація не вдалась: {ex.Message}", statusCode: 502);
+    }
+
+    var oldIds = currentCart.Lines.Select(l => l.ProductId).ToHashSet();
+    var newIds = result.FinalCart.Lines.Select(l => l.ProductId).ToHashSet();
+    var diffCount = oldIds.Except(newIds).Count() + newIds.Except(oldIds).Count();
+
+    return Results.Ok(new
+    {
+        needsReoptimization = true,
+        droppedProductIds = outOfStockIds,
+        fullyResolved = result.FullyResolved,
+        iterations = result.Iterations,
+        degradedNotes = result.DegradedNotes,
+        newBasketDiffCount = diffCount,
+        lines = result.FinalCart.Lines.Select(l => new { productId = l.ProductId, quantity = l.Quantity }),
+        totalAfterDiscounts = result.FinalCart.TotalKopecks / 100m,
     });
 });
 
