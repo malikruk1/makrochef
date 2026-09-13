@@ -22,7 +22,7 @@ public class CoverageProbeTests
         var recorder = new EfMcpCallRecorder(db);
         await using var client = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
 
-        var report = await new CoverageProbe(client).RunAsync();
+        var report = await new CoverageProbe(client, StubSession.Default).RunAsync();
 
         Assert.Equal(20, report.UniqueSkuCount);
         Assert.Equal(15, report.FullMacroCount);

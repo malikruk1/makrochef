@@ -1,3 +1,4 @@
+using MakroChef.Domain.Cart;
 using MakroChef.Mcp;
 
 namespace MakroChef.Agent.Coverage;
@@ -5,15 +6,28 @@ namespace MakroChef.Agent.Coverage;
 /// <summary>TASKS.md 3.4: get_my_offline_orders + get_my_online_orders -> for each unique SKU,
 /// get_product_details (through the caller's caching/backoff-wrapped client) -> report.
 /// Known systematic gaps (weighed goods, own-production, fresh) are flagged when their
-/// category is either absent from the basket history or mostly missing full macros.</summary>
-public class CoverageProbe(IMakroChefMcpClient client)
+/// category is either absent from the basket history or mostly missing full macros.
+///
+/// Confirmed live (2026-09-14): silpo_get_my_offline_orders also requires branchId/deliveryType/
+/// timeslotStart/timeslotEnd (SessionBootstrap), same as every catalog tool, and
+/// get_product_details needs a slug — order history only carries bare ids, so each id's slug is
+/// resolved via silpo_find_products_batch first (JsonFieldScanner.ExtractProductSlugs).</summary>
+public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
 {
     private static readonly string[] KnownGapCategories = ["ваговий", "власне виробництво", "фреш"];
 
     public async Task<CoverageReport> RunAsync(CancellationToken cancellationToken = default)
     {
-        var offlineOrdersJson = await client.CallToolAsync("silpo_get_my_offline_orders", new Dictionary<string, object?>(), cancellationToken);
-        var onlineOrdersJson = await client.CallToolAsync("silpo_get_my_online_orders", new Dictionary<string, object?>(), cancellationToken);
+        var sessionArgs = new Dictionary<string, object?>
+        {
+            ["branchId"] = session.BranchId,
+            ["deliveryType"] = session.DeliveryType,
+            ["timeslotStart"] = session.TimeslotStart,
+            ["timeslotEnd"] = session.TimeslotEnd,
+        };
+
+        var offlineOrdersJson = await client.CallToolAsync("silpo_get_my_offline_orders", sessionArgs, cancellationToken);
+        var onlineOrdersJson = await client.CallToolAsync("silpo_get_my_online_orders", sessionArgs, cancellationToken);
 
         var productIds = new HashSet<string>();
         productIds.UnionWith(JsonFieldScanner.ExtractProductIds(offlineOrdersJson));
@@ -29,9 +43,17 @@ public class CoverageProbe(IMakroChefMcpClient client)
 
         foreach (var productId in productIds)
         {
+            var slug = await ResolveSlugAsync(productId, cancellationToken) ?? productId;
             var detailsJson = await client.CallToolAsync(
                 "silpo_get_product_details",
-                new Dictionary<string, object?> { ["productId"] = productId },
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = session.BranchId,
+                    ["deliveryType"] = session.DeliveryType,
+                    ["timeslotStart"] = session.TimeslotStart,
+                    ["timeslotEnd"] = session.TimeslotEnd,
+                    ["slug"] = slug,
+                },
                 cancellationToken);
 
             var category = NutrientCompletenessChecker.ExtractCategory(detailsJson);
@@ -48,6 +70,23 @@ public class CoverageProbe(IMakroChefMcpClient client)
         var medianWeeklyReceipt = ComputeMedianWeeklyReceipt(orderTotals);
 
         return new CoverageReport(productIds.Count, fullMacroCount, totalByCategory, gaps, medianWeeklyReceipt);
+    }
+
+    private async Task<string?> ResolveSlugAsync(string productId, CancellationToken cancellationToken)
+    {
+        var batchJson = await client.CallToolAsync(
+            "silpo_find_products_batch",
+            new Dictionary<string, object?>
+            {
+                ["branchId"] = session.BranchId,
+                ["deliveryType"] = session.DeliveryType,
+                ["timeslotStart"] = session.TimeslotStart,
+                ["timeslotEnd"] = session.TimeslotEnd,
+                ["products"] = new[] { productId },
+            },
+            cancellationToken);
+
+        return JsonFieldScanner.ExtractProductSlugs(batchJson).GetValueOrDefault(productId);
     }
 
     private static List<string> FindGaps(Dictionary<string, int> totalByCategory, Dictionary<string, int> fullByCategory)

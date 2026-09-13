@@ -1,3 +1,4 @@
+using MakroChef.Agent.Cart;
 using MakroChef.Agent.Coverage;
 using MakroChef.Data;
 using MakroChef.Mcp;
@@ -28,8 +29,15 @@ public static class ProbeCommand
                 new MakroChefMcpClient(mcpBaseUri, staticTokenProvider, recorder, userId),
                 new CachingMcpClientOptions());
 
+            var session = await new SessionBootstrap(mcpClient).EnsureAsync();
+            if (session is null)
+            {
+                Console.Error.WriteLine("У гостя ще немає кошика (branchId/deliveryType/timeslot невідомі) — проба покриття вимагає обраної адреси/філії.");
+                return 1;
+            }
+
             Console.WriteLine("Читаю історію покупок і деталі товарів (це не миттєво — кожен унікальний SKU це окремий виклик)...");
-            var report = await new CoverageProbe(mcpClient).RunAsync();
+            var report = await new CoverageProbe(mcpClient, session).RunAsync();
 
             var reportPath = Path.Combine(RepoPaths.FindRoot(), "docs", "coverage-report.md");
             Directory.CreateDirectory(Path.GetDirectoryName(reportPath)!);
