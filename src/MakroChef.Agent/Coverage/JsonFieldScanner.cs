@@ -19,6 +19,56 @@ public static class JsonFieldScanner
         return ids;
     }
 
+    /// <summary>silpo_get_product_details needs a slug, not a productId (confirmed live,
+    /// 2026-09-14) — the slug only ever appears alongside "id"/"productId" in catalog-returning
+    /// tools (silpo_find_products_batch, silpo_get_products, silpo_get_similar_products,
+    /// silpo_get_replacements). Scans for objects carrying both, keyed by id.</summary>
+    public static IReadOnlyDictionary<string, string> ExtractProductSlugs(string json)
+    {
+        var result = new Dictionary<string, string>();
+        WalkProductSlugPairs(Parse(json), result);
+        return result;
+    }
+
+    private static void WalkProductSlugPairs(JsonElement element, Dictionary<string, string> result)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                string? id = null;
+                string? slug = null;
+                foreach (var prop in element.EnumerateObject())
+                {
+                    if (id is null && SkuKeyCandidates.Contains(prop.Name, StringComparer.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        id = prop.Value.GetString();
+                    }
+
+                    if (slug is null && prop.Name.Equals("slug", StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        slug = prop.Value.GetString();
+                    }
+
+                    WalkProductSlugPairs(prop.Value, result);
+                }
+
+                if (id is not null && slug is not null)
+                {
+                    result[id] = slug;
+                }
+
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    WalkProductSlugPairs(item, result);
+                }
+
+                break;
+        }
+    }
+
     /// <summary>One (amount, date) pair per top-level order object found, best-effort.</summary>
     public static IReadOnlyList<(decimal Amount, DateTimeOffset Date)> ExtractOrderTotals(string json)
     {

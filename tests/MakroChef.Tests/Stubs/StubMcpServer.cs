@@ -2,9 +2,20 @@ using System.ComponentModel;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MakroChef.Domain.Cart;
 using ModelContextProtocol.Server;
 
 namespace MakroChef.Tests.Stubs;
+
+/// <summary>Shared SessionContext for tests exercising CandidatePoolBuilder/SwapGenerator/
+/// ReoptimizationService/ExactMcpNutritionResolver against the stub server. Values match those
+/// baked into GetShoppingCartById's stub response.</summary>
+public static class StubSession
+{
+    public static readonly SessionContext Default = new(
+        "stub-cart-1", "stub-branch-1", "SelfPickup",
+        "2026-09-14T06:00:00+00:00", "2026-09-14T06:30:00+00:00");
+}
 
 [McpServerToolType]
 public static class StubTools
@@ -15,11 +26,17 @@ public static class StubTools
     public static string Ping(string message) => $"pong:{message}";
 
     [McpServerTool(Name = "silpo_get_product_details"), Description("Stub tool for gate 3.3/3.4/6 tests.")]
-    public static string GetProductDetails(string productId)
+    public static string GetProductDetails(string? productId = null, string? slug = null)
     {
         Interlocked.Increment(ref GetProductDetailsCallCount);
 
-        if (CatalogFixture.ProductDetailsByAndId.TryGetValue(productId, out var fixture))
+        // Both calling conventions must keep working: legacy callers (CoverageProbe, not yet
+        // migrated) pass productId; the SessionContext-aware pipeline (CandidatePoolBuilder,
+        // SwapGenerator, ReoptimizationService, ExactMcpNutritionResolver) passes slug. In every
+        // stub fixture slug == productId, so either key resolves the same fixture.
+        var key = productId ?? slug ?? "";
+
+        if (CatalogFixture.ProductDetailsByAndId.TryGetValue(key, out var fixture))
         {
             return fixture;
         }
@@ -27,12 +44,12 @@ public static class StubTools
         // Deterministic fixture for gate 3.4: "gapN" products simulate a category with
         // systematically incomplete nutrient data (e.g. weighed goods), everything else
         // has full Б/Ж/В/цукор. Shape matches the real live response (2026-09-14).
-        if (productId.StartsWith("gap", StringComparison.Ordinal))
+        if (key.StartsWith("gap", StringComparison.Ordinal))
         {
-            return "{\"success\":true,\"product\":{\"id\":\"" + productId + "\",\"category\":\"ваговий\",\"attributes\":{\"Білки (г)\":8}}}";
+            return "{\"success\":true,\"product\":{\"id\":\"" + key + "\",\"category\":\"ваговий\",\"attributes\":{\"Білки (г)\":8}}}";
         }
 
-        return "{\"success\":true,\"product\":{\"id\":\"" + productId +
+        return "{\"success\":true,\"product\":{\"id\":\"" + key +
                "\",\"category\":\"молочні\",\"price\":25,\"attributes\":{\"Білки (г)\":10,\"Жири (г)\":5,\"Вуглеводи (г)\":12,\"У тому числі цукри (г)\":6}}}";
     }
 
@@ -64,7 +81,18 @@ public static class StubTools
         """{"success":true,"loyalty":{"balance":{"total":275.5},"bonusAvailable":275.5,"bonusRequested":null,"isEnabled":true}}""";
 
     [McpServerTool(Name = "silpo_find_products_batch"), Description("Stub fixture for gate 6.1.")]
-    public static string FindProductsBatch() => CatalogFixture.SeedProductsJson;
+    public static string FindProductsBatch(string[]? products = null)
+    {
+        // Real find_products_batch echoes back slug for each requested id. Every stub fixture
+        // uses slug == productId, so any id from CatalogFixture.ProductDetailsByAndId resolves.
+        if (products is null || products.Length == 0)
+        {
+            return CatalogFixture.SeedProductsJson;
+        }
+
+        var entries = products.Select(id => "{\"productId\":\"" + id + "\",\"slug\":\"" + id + "\"}");
+        return "[" + string.Join(",", entries) + "]";
+    }
 
     [McpServerTool(Name = "silpo_get_products"), Description("Stub fixture for gate 6.1.")]
     public static string GetProducts(string category) => CatalogFixture.ProductsByCategory(category);
@@ -75,7 +103,7 @@ public static class StubTools
     [McpServerTool(Name = "silpo_get_replacements"), Description("Stub fixture for gate 7.2.")]
     public static string GetReplacements(string productId) => productId switch
     {
-        "test_cheese" => """[{"productId":"cheese_b"}]""",
+        "test_cheese" => """[{"productId":"cheese_b","slug":"cheese_b"}]""",
         _ => "[]",
     };
 
@@ -168,23 +196,23 @@ public static class StubCartState
 /// (parsed as kopecks by ProductDetailsParser), nutrients in grams per 100g.</summary>
 public static class CatalogFixture
 {
-    public const string SeedProductsJson = """[{"productId":"yogurt_x"},{"productId":"cheese_a"}]""";
+    public const string SeedProductsJson = """[{"productId":"yogurt_x","slug":"yogurt_x"},{"productId":"cheese_a","slug":"cheese_a"}]""";
 
     public static string ProductsByCategory(string category) => category switch
     {
-        "сир" => """[{"productId":"cheese_a"},{"productId":"cheese_b"}]""",
-        "риба" => """[{"productId":"fish_a"}]""",
-        "яйця" => """[{"productId":"eggs_a"}]""",
+        "сир" => """[{"productId":"cheese_a","slug":"cheese_a"},{"productId":"cheese_b","slug":"cheese_b"}]""",
+        "риба" => """[{"productId":"fish_a","slug":"fish_a"}]""",
+        "яйця" => """[{"productId":"eggs_a","slug":"eggs_a"}]""",
         _ => "[]",
     };
 
     public static string SimilarProducts(string productId) => productId switch
     {
-        "yogurt_x" => """[{"productId":"yogurt_y"},{"productId":"yogurt_z"}]""",
-        "bread_x" => """[{"productId":"bread_y"}]""",
-        "milk_x" => """[{"productId":"milk_y"}]""",
-        "juice_x" => """[{"productId":"juice_y"}]""",
-        "cereal_x" => """[{"productId":"cereal_y"}]""",
+        "yogurt_x" => """[{"productId":"yogurt_y","slug":"yogurt_y"},{"productId":"yogurt_z","slug":"yogurt_z"}]""",
+        "bread_x" => """[{"productId":"bread_y","slug":"bread_y"}]""",
+        "milk_x" => """[{"productId":"milk_y","slug":"milk_y"}]""",
+        "juice_x" => """[{"productId":"juice_y","slug":"juice_y"}]""",
+        "cereal_x" => """[{"productId":"cereal_y","slug":"cereal_y"}]""",
         _ => "[]",
     };
 

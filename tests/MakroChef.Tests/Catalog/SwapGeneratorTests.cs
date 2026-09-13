@@ -21,11 +21,11 @@ public class SwapGeneratorTests
             new DbContextOptionsBuilder<MakroChefDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
-        var resolver = new ExactMcpNutritionResolver(mcpClient);
+        var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
         var usualCart = new[] { "yogurt_x", "bread_x", "milk_x", "juice_x", "cereal_x" };
 
-        var swaps = await new SwapGenerator(mcpClient, resolver).GenerateAsync(usualCart);
+        var swaps = await new SwapGenerator(mcpClient, resolver, StubSession.Default).GenerateAsync(usualCart);
 
         Assert.True(swaps.Count >= 5, $"Expected >=5 swaps, got {swaps.Count}");
 

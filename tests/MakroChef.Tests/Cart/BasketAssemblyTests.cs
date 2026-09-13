@@ -80,10 +80,10 @@ public class BasketAssemblyTests
             new DbContextOptionsBuilder<MakroChefDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
-        var resolver = new ExactMcpNutritionResolver(mcpClient);
+        var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
         var solver = new LoggingBasketSolver(new MakroChef.Solver.BasketSolver(), recorder);
         var assembler = new BasketAssembler(mcpClient, companyId: "co1", branchId: "br1");
-        var reoptimizer = new ReoptimizationService(mcpClient, resolver, solver, assembler);
+        var reoptimizer = new ReoptimizationService(mcpClient, resolver, solver, assembler, StubSession.Default);
 
         // Hand-built pool: test_cheese is the cheapest per gram, so it dominates the initial
         // solve. Its only listed replacement (cheese_b, via get_replacements) is *not* the

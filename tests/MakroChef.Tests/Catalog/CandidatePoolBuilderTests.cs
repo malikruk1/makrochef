@@ -23,14 +23,14 @@ public class CandidatePoolBuilderTests
             new DbContextOptionsBuilder<MakroChefDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
-        var resolver = new ExactMcpNutritionResolver(mcpClient);
+        var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
         var request = new CandidatePoolRequest(
             SeedProductIds: ["yogurt_x", "cheese_a"],
             DeficitCategories: ["сир", "риба", "яйця"],
             RestrictedCategories: []);
 
-        var candidates = await new CandidatePoolBuilder(mcpClient, resolver).BuildAsync(request);
+        var candidates = await new CandidatePoolBuilder(mcpClient, resolver, StubSession.Default).BuildAsync(request);
 
         Assert.Contains(candidates, c => c.ProductId == "cheese_a");
         Assert.Contains(candidates, c => c.ProductId == "fish_a");
@@ -53,14 +53,14 @@ public class CandidatePoolBuilderTests
             new DbContextOptionsBuilder<MakroChefDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var recorder = new EfMcpCallRecorder(db);
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
-        var resolver = new ExactMcpNutritionResolver(mcpClient);
+        var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
         var request = new CandidatePoolRequest(
             SeedProductIds: [],
             DeficitCategories: ["риба"],
             RestrictedCategories: ["риба"]);
 
-        var candidates = await new CandidatePoolBuilder(mcpClient, resolver).BuildAsync(request);
+        var candidates = await new CandidatePoolBuilder(mcpClient, resolver, StubSession.Default).BuildAsync(request);
 
         var fish = candidates.Single(c => c.ProductId == "fish_a");
         Assert.True(fish.Restricted);

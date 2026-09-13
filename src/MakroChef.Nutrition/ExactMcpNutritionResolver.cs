@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MakroChef.Domain.Cart;
 using MakroChef.Domain.Nutrition;
 using MakroChef.Mcp;
 
@@ -7,24 +8,29 @@ namespace MakroChef.Nutrition;
 
 /// <summary>Path A (TASKS.md 4.0): coverage >= 60% -> trust get_product_details directly.
 ///
-/// KNOWN GAP (2026-09-14, BLOCKERS.md): a live call confirmed silpo_get_product_details takes
-/// branchId + deliveryType + timeslotStart + timeslotEnd + slug — NOT productId. The slug can
-/// only come from a prior silpo_find_products_batch/get_products result, never guessed. This
-/// resolver still calls with a bare productId, which will fail validation live; wiring the
-/// session context + slug through every caller (CandidatePoolBuilder, SwapGenerator,
-/// ReoptimizationService, CoverageProbe) is the next real task, not done in this pass.
+/// Confirmed live (2026-09-14): silpo_get_product_details takes branchId + deliveryType +
+/// timeslotStart + timeslotEnd + slug — NOT productId. The slug can only come from a prior
+/// silpo_find_products_batch/get_products result (JsonFieldScanner.ExtractProductSlugs), never
+/// guessed from a name. <see cref="ResolveAsync"/>'s first parameter is therefore the SLUG, not
+/// the product's own id — callers must resolve that first.
 ///
-/// The JSON parsing below IS correct against the real response shape (confirmed live): nutrients
-/// live in product.attributes under Ukrainian food-label keys ("Білки (г)", "Жири (г)",
-/// "Вуглеводи (г)"), not English ones tools/list could never have revealed, and energy comes as
-/// a combined "kcal/kJ" string like "241/1013".</summary>
-public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient) : INutritionResolver
+/// Nutrients live in product.attributes under Ukrainian food-label keys ("Білки (г)", "Жири
+/// (г)", "Вуглеводи (г)"), not English ones tools/list could never have revealed, and energy
+/// comes as a combined "kcal/kJ" string like "241/1013".</summary>
+public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient, SessionContext session) : INutritionResolver
 {
-    public async Task<NutrientInfo?> ResolveAsync(string productId, string? barcode, CancellationToken cancellationToken = default)
+    public async Task<NutrientInfo?> ResolveAsync(string slug, string? barcode, CancellationToken cancellationToken = default)
     {
         var json = await mcpClient.CallToolAsync(
             "silpo_get_product_details",
-            new Dictionary<string, object?> { ["productId"] = productId },
+            new Dictionary<string, object?>
+            {
+                ["branchId"] = session.BranchId,
+                ["deliveryType"] = session.DeliveryType,
+                ["timeslotStart"] = session.TimeslotStart,
+                ["timeslotEnd"] = session.TimeslotEnd,
+                ["slug"] = slug,
+            },
             cancellationToken);
 
         if (string.IsNullOrWhiteSpace(json))

@@ -13,12 +13,17 @@ namespace MakroChef.Agent.Cart;
 /// and the WHOLE basket is re-solved under the same constraints. Substituting a 40g-protein
 /// yogurt for a 22g one and calling it done leaves the deficit worse and the rest of the basket
 /// stale; re-solving might find it's now worth buying different cheese and one less pack of
-/// nuts instead.</summary>
+/// nuts instead.
+///
+/// Confirmed live (2026-09-14): get_product_details needs a slug + branchId/deliveryType/
+/// timeslot (SessionContext), not a bare productId - get_replacements results carry both id and
+/// slug together, same as every other catalog tool.</summary>
 public class ReoptimizationService(
     IMakroChefMcpClient mcpClient,
     INutritionResolver nutritionResolver,
     LoggingBasketSolver solver,
-    BasketAssembler basketAssembler)
+    BasketAssembler basketAssembler,
+    SessionContext session)
 {
     private const int MaxIterations = 3;
 
@@ -42,16 +47,25 @@ public class ReoptimizationService(
                 candidates.RemoveAll(c => c.ProductId == problemProductId);
 
                 var replacementsJson = await mcpClient.CallToolAsync(
-                    "silpo_get_replacements", new Dictionary<string, object?> { ["productId"] = problemProductId }, cancellationToken);
+                    "silpo_get_replacements",
+                    new Dictionary<string, object?>
+                    {
+                        ["productId"] = problemProductId,
+                        ["branchId"] = session.BranchId,
+                        ["deliveryType"] = session.DeliveryType,
+                        ["timeslotStart"] = session.TimeslotStart,
+                        ["timeslotEnd"] = session.TimeslotEnd,
+                    },
+                    cancellationToken);
 
-                foreach (var replacementId in JsonFieldScanner.ExtractProductIds(replacementsJson))
+                foreach (var (replacementId, replacementSlug) in JsonFieldScanner.ExtractProductSlugs(replacementsJson))
                 {
                     if (candidates.Any(c => c.ProductId == replacementId))
                     {
                         continue;
                     }
 
-                    var candidate = await ResolveReplacementCandidateAsync(replacementId, cancellationToken);
+                    var candidate = await ResolveReplacementCandidateAsync(replacementId, replacementSlug, cancellationToken);
                     if (candidate is not null)
                     {
                         candidates.Add(candidate);
@@ -79,13 +93,22 @@ public class ReoptimizationService(
         return new ReoptimizationResult(false, MaxIterations, cart, degradedNotes);
     }
 
-    private async Task<Candidate?> ResolveReplacementCandidateAsync(string productId, CancellationToken cancellationToken)
+    private async Task<Candidate?> ResolveReplacementCandidateAsync(string productId, string slug, CancellationToken cancellationToken)
     {
         var detailsJson = await mcpClient.CallToolAsync(
-            "silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
+            "silpo_get_product_details",
+            new Dictionary<string, object?>
+            {
+                ["branchId"] = session.BranchId,
+                ["deliveryType"] = session.DeliveryType,
+                ["timeslotStart"] = session.TimeslotStart,
+                ["timeslotEnd"] = session.TimeslotEnd,
+                ["slug"] = slug,
+            },
+            cancellationToken);
         var details = ProductDetailsParser.Parse(productId, detailsJson);
 
-        var nutrients = await nutritionResolver.ResolveAsync(productId, details.Barcode, cancellationToken);
+        var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
         if (nutrients is null)
         {
             return null;

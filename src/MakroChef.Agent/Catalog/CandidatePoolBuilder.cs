@@ -1,43 +1,67 @@
 using MakroChef.Agent.Coverage;
+using MakroChef.Domain.Cart;
 using MakroChef.Domain.Nutrition;
 using MakroChef.Domain.Solver;
 using MakroChef.Mcp;
 
 namespace MakroChef.Agent.Catalog;
 
-/// <summary>TASKS.md 6.1: assembles the 200-400 product pool the solver picks from. The exact
-/// 200-400 count needs a live account with a real catalog (BLOCKERS.md B-2) - this builder is
-/// complete and correct, but a stub server can't fake a whole supermarket's inventory, so local
-/// tests verify the pipeline (parsing, discounts, restrictions, nutrient conversion) at a
-/// smaller scale.</summary>
-public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver)
+/// <summary>TASKS.md 6.1: assembles the 200-400 product pool the solver picks from.
+///
+/// Confirmed live (2026-09-14): silpo_find_products_batch/get_products/get_product_details all
+/// need branchId + deliveryType + timeslotStart + timeslotEnd (from SessionBootstrap), and
+/// get_product_details specifically needs the product's SLUG, not its id — the slug only ever
+/// appears alongside the id in find_products_batch/get_products results
+/// (JsonFieldScanner.ExtractProductSlugs), so it must be captured at pool-assembly time rather
+/// than re-derived later.
+///
+/// The exact 200-400 count still needs a live account with a real catalog to fully validate at
+/// that scale (BLOCKERS.md) - this builder is complete and correct, but a stub server can't fake
+/// a whole supermarket's inventory, so local tests verify the pipeline (parsing, discounts,
+/// restrictions, nutrient conversion, slug resolution) at a smaller scale.</summary>
+public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver, SessionContext session)
 {
     public async Task<IReadOnlyList<Candidate>> BuildAsync(CandidatePoolRequest request, CancellationToken cancellationToken = default)
     {
-        var productIds = new HashSet<string>();
+        var slugsById = new Dictionary<string, string>();
 
         if (request.SeedProductIds.Count > 0)
         {
             var batchJson = await mcpClient.CallToolAsync(
                 "silpo_find_products_batch",
-                new Dictionary<string, object?> { ["productIds"] = request.SeedProductIds },
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = session.BranchId,
+                    ["deliveryType"] = session.DeliveryType,
+                    ["timeslotStart"] = session.TimeslotStart,
+                    ["timeslotEnd"] = session.TimeslotEnd,
+                    ["products"] = request.SeedProductIds,
+                },
                 cancellationToken);
-            productIds.UnionWith(JsonFieldScanner.ExtractProductIds(batchJson));
+            MergeSlugs(slugsById, batchJson);
         }
 
         foreach (var category in request.DeficitCategories)
         {
             var productsJson = await mcpClient.CallToolAsync(
                 "silpo_get_products",
-                new Dictionary<string, object?> { ["category"] = category, ["onPromotion"] = true },
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = session.BranchId,
+                    ["deliveryType"] = session.DeliveryType,
+                    ["timeslotStart"] = session.TimeslotStart,
+                    ["timeslotEnd"] = session.TimeslotEnd,
+                    ["category"] = category,
+                    ["mustHavePromotion"] = true,
+                },
                 cancellationToken);
-            productIds.UnionWith(JsonFieldScanner.ExtractProductIds(productsJson));
+            MergeSlugs(slugsById, productsJson);
         }
 
         var candidates = new List<Candidate>();
-        foreach (var productId in productIds)
+        foreach (var (productId, slug) in slugsById)
         {
-            var candidate = await ResolveCandidateAsync(productId, request.RestrictedCategories, cancellationToken);
+            var candidate = await ResolveCandidateAsync(productId, slug, request.RestrictedCategories, cancellationToken);
             if (candidate is not null)
             {
                 candidates.Add(candidate);
@@ -47,15 +71,30 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
         return candidates;
     }
 
-    private async Task<Candidate?> ResolveCandidateAsync(string productId, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
+    private static void MergeSlugs(Dictionary<string, string> slugsById, string json)
+    {
+        foreach (var (id, slug) in JsonFieldScanner.ExtractProductSlugs(json))
+        {
+            slugsById[id] = slug;
+        }
+    }
+
+    private async Task<Candidate?> ResolveCandidateAsync(string productId, string slug, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
     {
         var detailsJson = await mcpClient.CallToolAsync(
             "silpo_get_product_details",
-            new Dictionary<string, object?> { ["productId"] = productId },
+            new Dictionary<string, object?>
+            {
+                ["branchId"] = session.BranchId,
+                ["deliveryType"] = session.DeliveryType,
+                ["timeslotStart"] = session.TimeslotStart,
+                ["timeslotEnd"] = session.TimeslotEnd,
+                ["slug"] = slug,
+            },
             cancellationToken);
         var details = ProductDetailsParser.Parse(productId, detailsJson);
 
-        var nutrients = await nutritionResolver.ResolveAsync(productId, details.Barcode, cancellationToken);
+        var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
         if (nutrients is null)
         {
             return null; // no usable nutrient data - can't let the solver reason about it

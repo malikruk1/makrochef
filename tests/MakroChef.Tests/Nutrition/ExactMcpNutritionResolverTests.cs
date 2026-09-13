@@ -20,7 +20,7 @@ public class ExactMcpNutritionResolverTests
         var recorder = new EfMcpCallRecorder(db);
         await using var client = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
 
-        var resolver = new ExactMcpNutritionResolver(client);
+        var resolver = new ExactMcpNutritionResolver(client, StubSession.Default);
         var result = await resolver.ResolveAsync("sku1", barcode: null);
 
         Assert.NotNull(result);
@@ -42,7 +42,7 @@ public class ExactMcpNutritionResolverTests
         var recorder = new EfMcpCallRecorder(db);
         await using var client = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
 
-        var resolver = new ExactMcpNutritionResolver(client);
+        var resolver = new ExactMcpNutritionResolver(client, StubSession.Default);
         var result = await resolver.ResolveAsync("gap1", barcode: null);
 
         Assert.NotNull(result);

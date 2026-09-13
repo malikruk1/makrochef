@@ -1,3 +1,4 @@
+using MakroChef.Domain.Cart;
 using MakroChef.Domain.Nutrition;
 using MakroChef.Mcp;
 
@@ -16,9 +17,9 @@ public enum NutritionResolverMode
 /// (BLOCKERS.md B-5) is made — everything else about the two resolvers is already written.</summary>
 public static class NutritionResolverFactory
 {
-    public static INutritionResolver Create(NutritionResolverMode mode, IMakroChefMcpClient mcpClient)
+    public static INutritionResolver Create(NutritionResolverMode mode, IMakroChefMcpClient mcpClient, SessionContext session)
     {
-        var exact = new ExactMcpNutritionResolver(mcpClient);
+        var exact = new ExactMcpNutritionResolver(mcpClient, session);
         return mode switch
         {
             NutritionResolverMode.Exact => exact,

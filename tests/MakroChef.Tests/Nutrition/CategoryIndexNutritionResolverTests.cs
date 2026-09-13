@@ -24,7 +24,7 @@ public class CategoryIndexNutritionResolverTests
 
         var offCalled = false;
         var offHandler = new FakeHttpMessageHandler(_ => { offCalled = true; return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") }; });
-        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient), new OpenFoodFactsClient(new HttpClient(offHandler)));
+        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient, StubSession.Default), new OpenFoodFactsClient(new HttpClient(offHandler)));
 
         var result = await resolver.ResolveAsync("sku1", barcode: "4820000000000");
 
@@ -46,7 +46,7 @@ public class CategoryIndexNutritionResolverTests
 
         const string offJson = """{"status":1,"product":{"nutriments":{"proteins_100g":3.5,"sugars_100g":4.1}}}""";
         var offHandler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(offJson) });
-        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient), new OpenFoodFactsClient(new HttpClient(offHandler)));
+        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient, StubSession.Default), new OpenFoodFactsClient(new HttpClient(offHandler)));
 
         var result = await resolver.ResolveAsync("gap1", barcode: "4820000000000");
 
@@ -68,7 +68,7 @@ public class CategoryIndexNutritionResolverTests
 
         var offCalled = false;
         var offHandler = new FakeHttpMessageHandler(_ => { offCalled = true; return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") }; });
-        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient), new OpenFoodFactsClient(new HttpClient(offHandler)));
+        var resolver = new CategoryIndexNutritionResolver(new ExactMcpNutritionResolver(mcpClient, StubSession.Default), new OpenFoodFactsClient(new HttpClient(offHandler)));
 
         var result = await resolver.ResolveAsync("gap1", barcode: null);
 
