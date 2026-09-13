@@ -26,15 +26,14 @@ public static class StubTools
 
         // Deterministic fixture for gate 3.4: "gapN" products simulate a category with
         // systematically incomplete nutrient data (e.g. weighed goods), everything else
-        // has full Б/Ж/В/цукор.
+        // has full Б/Ж/В/цукор. Shape matches the real live response (2026-09-14).
         if (productId.StartsWith("gap", StringComparison.Ordinal))
         {
-            return $$"""{"productId":"{{productId}}","category":"ваговий","proteinPer100g":8}""";
+            return "{\"success\":true,\"product\":{\"id\":\"" + productId + "\",\"category\":\"ваговий\",\"attributes\":{\"Білки (г)\":8}}}";
         }
 
-        return $$"""
-            {"productId":"{{productId}}","category":"молочні","price":25,"proteinPer100g":10,"fatPer100g":5,"carbsPer100g":12,"sugarPer100g":6}
-            """;
+        return "{\"success\":true,\"product\":{\"id\":\"" + productId +
+               "\",\"category\":\"молочні\",\"price\":25,\"attributes\":{\"Білки (г)\":10,\"Жири (г)\":5,\"Вуглеводи (г)\":12,\"У тому числі цукри (г)\":6}}}";
     }
 
     [McpServerTool(Name = "silpo_get_my_offline_orders"), Description("Stub fixture for gate 3.4.")]
@@ -174,25 +173,31 @@ public static class CatalogFixture
 
     /// <summary>get_product_details fixtures for gate 6: five "_x -> _y" pairs are a real
     /// improvement (more protein or less sugar, cheaper), "_z" is worse both ways so the swap
-    /// generator must reject it.</summary>
+    /// generator must reject it. Shape matches the real live response (2026-09-14): wrapped in
+    /// "product", nutrients under Ukrainian-keyed "attributes", weight from "displayRatio".</summary>
     public static readonly Dictionary<string, string> ProductDetailsByAndId = new()
     {
-        ["yogurt_x"] = """{"category":"молочні","price":30,"proteinPer100g":4,"sugarPer100g":12}""",
-        ["yogurt_y"] = """{"category":"молочні","price":27,"proteinPer100g":6,"sugarPer100g":8}""",
-        ["yogurt_z"] = """{"category":"молочні","price":32,"proteinPer100g":3,"sugarPer100g":15}""",
-        ["bread_x"] = """{"category":"випічка","price":25,"proteinPer100g":8,"sugarPer100g":5}""",
-        ["bread_y"] = """{"category":"випічка","price":24,"proteinPer100g":9,"sugarPer100g":4}""",
-        ["milk_x"] = """{"category":"молочні","price":20,"proteinPer100g":3,"sugarPer100g":5}""",
-        ["milk_y"] = """{"category":"молочні","price":19,"proteinPer100g":3.5,"sugarPer100g":4}""",
-        ["juice_x"] = """{"category":"напої","price":35,"proteinPer100g":0,"sugarPer100g":20}""",
-        ["juice_y"] = """{"category":"напої","price":34,"proteinPer100g":0.5,"sugarPer100g":15}""",
-        ["cereal_x"] = """{"category":"крупи","price":40,"proteinPer100g":8,"sugarPer100g":10}""",
-        ["cereal_y"] = """{"category":"крупи","price":38,"proteinPer100g":10,"sugarPer100g":6}""",
-        ["cheese_a"] = """{"category":"сир","price":80,"proteinPer100g":25,"sugarPer100g":1,"weightGrams":200}""",
-        ["cheese_b"] = """{"category":"сир","price":75,"proteinPer100g":22,"sugarPer100g":1,"weightGrams":200}""",
-        ["fish_a"] = """{"category":"риба","price":120,"proteinPer100g":20,"sugarPer100g":0,"weightGrams":300}""",
-        ["eggs_a"] = """{"category":"яйця","price":45,"proteinPer100g":13,"sugarPer100g":0.5,"weightGrams":600}""",
+        ["yogurt_x"] = Product("молочні", 30, protein: 4, sugar: 12),
+        ["yogurt_y"] = Product("молочні", 27, protein: 6, sugar: 8),
+        ["yogurt_z"] = Product("молочні", 32, protein: 3, sugar: 15),
+        ["bread_x"] = Product("випічка", 25, protein: 8, sugar: 5),
+        ["bread_y"] = Product("випічка", 24, protein: 9, sugar: 4),
+        ["milk_x"] = Product("молочні", 20, protein: 3, sugar: 5),
+        ["milk_y"] = Product("молочні", 19, protein: 3.5m, sugar: 4),
+        ["juice_x"] = Product("напої", 35, protein: 0, sugar: 20),
+        ["juice_y"] = Product("напої", 34, protein: 0.5m, sugar: 15),
+        ["cereal_x"] = Product("крупи", 40, protein: 8, sugar: 10),
+        ["cereal_y"] = Product("крупи", 38, protein: 10, sugar: 6),
+        ["cheese_a"] = Product("сир", 80, protein: 25, sugar: 1, weightGrams: 200),
+        ["cheese_b"] = Product("сир", 75, protein: 22, sugar: 1, weightGrams: 200),
+        ["fish_a"] = Product("риба", 120, protein: 20, sugar: 0, weightGrams: 300),
+        ["eggs_a"] = Product("яйця", 45, protein: 13, sugar: 0.5m, weightGrams: 600),
     };
+
+    private static string Product(string category, decimal price, decimal protein, decimal sugar, int weightGrams = 100) =>
+        "{\"success\":true,\"product\":{\"category\":\"" + category + "\",\"price\":" + price.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        ",\"displayRatio\":\"" + weightGrams + "г\",\"attributes\":{\"Білки (г)\":" + protein.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        ",\"У тому числі цукри (г)\":" + sugar.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}}}";
 }
 
 /// <summary>20-SKU fixture for gate 3.4 (15 complete + 5 "gap" products), split across two

@@ -51,6 +51,48 @@ public static class DiagCommand
         }
 
         Console.WriteLine();
+        Console.WriteLine("=== silpo_get_product_details (raw, branchId+slug from the live cart) ===");
+        try
+        {
+            var details = await client.CallToolAsync(
+                "silpo_get_product_details",
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = "1ef86dfb-5d4d-6a20-9377-494ed979998f",
+                    ["deliveryType"] = "SelfPickup",
+                    ["timeslotStart"] = "2026-09-14T06:00:00+00:00",
+                    ["timeslotEnd"] = "2026-09-14T06:30:00+00:00",
+                    ["slug"] = "pitsa-amerykana-747288",
+                });
+            Console.WriteLine(details);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_find_products_batch (raw, search 'молоко') ===");
+        try
+        {
+            var batch = await client.CallToolAsync(
+                "silpo_find_products_batch",
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = "1ef86dfb-5d4d-6a20-9377-494ed979998f",
+                    ["deliveryType"] = "SelfPickup",
+                    ["timeslotStart"] = "2026-09-14T06:00:00+00:00",
+                    ["timeslotEnd"] = "2026-09-14T06:30:00+00:00",
+                    ["products"] = new[] { "молоко" },
+                });
+            Console.WriteLine(batch);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
+        Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_delivery_addresses (raw) ===");
         var addresses = await client.CallToolAsync("silpo_get_my_delivery_addresses", new Dictionary<string, object?>());
         Console.WriteLine(addresses);

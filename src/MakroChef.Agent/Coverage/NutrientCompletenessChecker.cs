@@ -1,51 +1,21 @@
-using System.Text.Json;
+using MakroChef.Agent.Catalog;
+using MakroChef.Nutrition;
 
 namespace MakroChef.Agent.Coverage;
 
+/// <summary>Delegates to the same real-shape parsers used everywhere else
+/// (ExactMcpNutritionResolver.ParseNutrients, ProductDetailsParser) instead of keeping a
+/// second, separately-guessed set of field names — this used to assume English keys
+/// ("proteinPer100g" etc.) at the JSON root; the real payload nests Ukrainian-labeled
+/// nutrients under product.attributes (confirmed live, 2026-09-14).</summary>
 public static class NutrientCompletenessChecker
 {
-    private static readonly string[] ProteinKeys = ["proteinPer100g", "protein"];
-    private static readonly string[] FatKeys = ["fatPer100g", "fat"];
-    private static readonly string[] CarbsKeys = ["carbsPer100g", "carbohydratesPer100g", "carbs", "carbohydrates"];
-    private static readonly string[] SugarKeys = ["sugarPer100g", "sugar"];
-
     public static bool HasFullMacros(string productDetailsJson)
     {
-        var root = JsonDocument.Parse(productDetailsJson).RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
-        return HasAnyNumeric(root, ProteinKeys)
-            && HasAnyNumeric(root, FatKeys)
-            && HasAnyNumeric(root, CarbsKeys)
-            && HasAnyNumeric(root, SugarKeys);
+        var (protein, fat, carbs, sugar, _) = ExactMcpNutritionResolver.ParseNutrients(productDetailsJson);
+        return protein is not null && fat is not null && carbs is not null && sugar is not null;
     }
 
-    public static string ExtractCategory(string productDetailsJson)
-    {
-        var root = JsonDocument.Parse(productDetailsJson).RootElement;
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("category", out var category)
-            && category.ValueKind == JsonValueKind.String)
-        {
-            return category.GetString()!;
-        }
-
-        return "невідома";
-    }
-
-    private static bool HasAnyNumeric(JsonElement root, string[] keyCandidates)
-    {
-        foreach (var prop in root.EnumerateObject())
-        {
-            if (keyCandidates.Contains(prop.Name, StringComparer.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.Number)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    public static string ExtractCategory(string productDetailsJson) =>
+        ProductDetailsParser.Parse("_", productDetailsJson).Category;
 }
