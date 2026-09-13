@@ -187,7 +187,22 @@ public static class JsonFieldScanner
         }
     }
 
-    private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+    /// <summary>Confirmed live (2026-09-14): a catalog tool can return a plain-text MCP error
+    /// (e.g. a batch-size-limit message) instead of JSON even when the call itself succeeds at
+    /// the transport level. Every scanner here just wants "extract what you can" from a
+    /// best-effort payload, so an unparseable response yields nothing found rather than an
+    /// unhandled crash — the same tolerance already given to a single missing field.</summary>
+    private static JsonElement Parse(string json)
+    {
+        try
+        {
+            return JsonDocument.Parse(json).RootElement;
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
+    }
 
     private static void WalkStrings(JsonElement element, string[] keyCandidates, Action<string> onMatch)
     {

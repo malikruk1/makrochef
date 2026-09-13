@@ -167,10 +167,46 @@ async function renderLiveBasket() {
       Джерело норми: ${b.normSource}. Покриття даних про нутрієнти: ${b.coveragePercent.toFixed(0)}%. Пул кандидатів: ${b.candidatePoolSize} товарів.
     </p>
     ${relaxedLine}
-    <p style="font-size:11px;color:var(--text-muted)">
-      Це лише розрахунок — товари ще не додані в реальний кошик Сільпо (окрема дія з підтвердженням, TASKS.md 7.1).
-    </p>
+    <p style="font-size:11px;color:var(--text-muted)" id="basket-apply-status"></p>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" style="width:100%" onclick="applyBasketAndProceed()">До оформлення</button>
+    </div>
   `;
+}
+
+async function applyBasketToRealCart(confirmClear) {
+  const res = await fetch("/api/basket/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmClear }),
+  });
+  const body = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, body };
+}
+
+async function applyBasketAndProceed() {
+  const status = document.getElementById("basket-apply-status");
+  if (status) status.textContent = "Оновлюємо кошик у Сільпо…";
+
+  let result = await applyBasketToRealCart(false);
+
+  if (!result.ok && result.status === 409 && result.body?.needsConfirmation) {
+    const confirmed = window.confirm(result.body.message);
+    if (!confirmed) {
+      if (status) status.textContent = "Скасовано — кошик не змінено.";
+      return;
+    }
+    result = await applyBasketToRealCart(true);
+  }
+
+  if (!result.ok) {
+    if (status) status.textContent = `Не вдалося оновити кошик: ${result.body?.detail ?? "невідома помилка"}`;
+    return;
+  }
+
+  currentScreen = "5";
+  currentState = "live";
+  render();
 }
 
 async function renderLiveReoptimization() {

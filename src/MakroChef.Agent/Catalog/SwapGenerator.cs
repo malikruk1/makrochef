@@ -28,11 +28,25 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
                 continue;
             }
 
-            var oldDetailsJson = await GetProductDetailsAsync(oldSlug, cancellationToken);
-            var oldDetails = ProductDetailsParser.Parse(productId, oldDetailsJson);
-            var oldNutrients = await nutritionResolver.ResolveAsync(oldSlug, oldDetails.Barcode, cancellationToken);
-            if (oldNutrients is null)
+            ProductDetails oldDetails;
+            NutrientInfo oldNutrients;
+            try
             {
+                var oldDetailsJson = await GetProductDetailsAsync(oldSlug, cancellationToken);
+                oldDetails = ProductDetailsParser.Parse(productId, oldDetailsJson);
+                var resolved = await nutritionResolver.ResolveAsync(oldSlug, oldDetails.Barcode, cancellationToken);
+                if (resolved is null)
+                {
+                    continue;
+                }
+
+                oldNutrients = resolved;
+            }
+            catch (Exception)
+            {
+                // Confirmed live (2026-09-14): a delisted "usual" product can make
+                // get_product_details return a plain-text error instead of JSON - can't build any
+                // swaps off it, but the rest of the guest's basket still can be.
                 continue;
             }
 
@@ -99,24 +113,35 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
     private async Task<ProductSwap?> TryBuildSwapAsync(
         string oldProductId, ProductDetails oldDetails, NutrientInfo oldNutrients, string candidateId, string candidateSlug, CancellationToken cancellationToken)
     {
-        var newDetailsJson = await GetProductDetailsAsync(candidateSlug, cancellationToken);
-        var newDetails = ProductDetailsParser.Parse(candidateId, newDetailsJson);
-        var newNutrients = await nutritionResolver.ResolveAsync(candidateSlug, newDetails.Barcode, cancellationToken);
-        if (newNutrients is null)
+        try
         {
+            var newDetailsJson = await GetProductDetailsAsync(candidateSlug, cancellationToken);
+            var newDetails = ProductDetailsParser.Parse(candidateId, newDetailsJson);
+
+            var newNutrients = await nutritionResolver.ResolveAsync(candidateSlug, newDetails.Barcode, cancellationToken);
+            if (newNutrients is null)
+            {
+                return null;
+            }
+
+            var proteinDelta = (newNutrients.ProteinPer100g ?? 0) - (oldNutrients.ProteinPer100g ?? 0);
+            var sugarDelta = (newNutrients.SugarPer100g ?? 0) - (oldNutrients.SugarPer100g ?? 0);
+            var priceDelta = newDetails.PriceKopecks - oldDetails.PriceKopecks;
+
+            var isImprovement = proteinDelta > 0 || sugarDelta < 0;
+            if (!isImprovement)
+            {
+                return null;
+            }
+
+            return new ProductSwap(oldProductId, candidateId, proteinDelta, sugarDelta, priceDelta, newDetails.OnPromotion);
+        }
+        catch (Exception)
+        {
+            // Confirmed live (2026-09-14): a delisted candidate can make get_product_details (or
+            // the nutrition resolver's own call) return a plain-text error instead of JSON - just
+            // not a swap worth offering.
             return null;
         }
-
-        var proteinDelta = (newNutrients.ProteinPer100g ?? 0) - (oldNutrients.ProteinPer100g ?? 0);
-        var sugarDelta = (newNutrients.SugarPer100g ?? 0) - (oldNutrients.SugarPer100g ?? 0);
-        var priceDelta = newDetails.PriceKopecks - oldDetails.PriceKopecks;
-
-        var isImprovement = proteinDelta > 0 || sugarDelta < 0;
-        if (!isImprovement)
-        {
-            return null;
-        }
-
-        return new ProductSwap(oldProductId, candidateId, proteinDelta, sugarDelta, priceDelta, newDetails.OnPromotion);
     }
 }

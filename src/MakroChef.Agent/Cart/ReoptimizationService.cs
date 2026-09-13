@@ -2,6 +2,7 @@ using MakroChef.Agent.Catalog;
 using MakroChef.Agent.Coverage;
 using MakroChef.Agent.Tracing;
 using MakroChef.Domain.Cart;
+using MakroChef.Domain.Catalog;
 using MakroChef.Domain.Nutrition;
 using MakroChef.Domain.Solver;
 using MakroChef.Mcp;
@@ -95,33 +96,43 @@ public class ReoptimizationService(
 
     private async Task<Candidate?> ResolveReplacementCandidateAsync(string productId, string slug, CancellationToken cancellationToken)
     {
-        var detailsJson = await mcpClient.CallToolAsync(
-            "silpo_get_product_details",
-            new Dictionary<string, object?>
-            {
-                ["branchId"] = session.BranchId,
-                ["deliveryType"] = session.DeliveryType,
-                ["timeslotStart"] = session.TimeslotStart,
-                ["timeslotEnd"] = session.TimeslotEnd,
-                ["slug"] = slug,
-            },
-            cancellationToken);
-        var details = ProductDetailsParser.Parse(productId, detailsJson);
-
-        var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
-        if (nutrients is null)
+        try
         {
+            var detailsJson = await mcpClient.CallToolAsync(
+                "silpo_get_product_details",
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = session.BranchId,
+                    ["deliveryType"] = session.DeliveryType,
+                    ["timeslotStart"] = session.TimeslotStart,
+                    ["timeslotEnd"] = session.TimeslotEnd,
+                    ["slug"] = slug,
+                },
+                cancellationToken);
+            var details = ProductDetailsParser.Parse(productId, detailsJson);
+
+            var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
+            if (nutrients is null)
+            {
+                return null;
+            }
+
+            var weightFactor = details.WeightGrams / 100m;
+            return new Candidate(
+                ProductId: productId,
+                Category: details.Category,
+                PriceKopecks: details.PriceKopecks,
+                ProteinMg: (long)Math.Round((nutrients.ProteinPer100g ?? 0) * weightFactor * 1000),
+                SugarMg: (long)Math.Round((nutrients.SugarPer100g ?? 0) * weightFactor * 1000),
+                Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
+                Restricted: false);
+        }
+        catch (Exception)
+        {
+            // Confirmed live (2026-09-14): a delisted replacement can make get_product_details (or
+            // the nutrition resolver's own call) return a plain-text error instead of JSON - just
+            // not a usable replacement candidate.
             return null;
         }
-
-        var weightFactor = details.WeightGrams / 100m;
-        return new Candidate(
-            ProductId: productId,
-            Category: details.Category,
-            PriceKopecks: details.PriceKopecks,
-            ProteinMg: (long)Math.Round((nutrients.ProteinPer100g ?? 0) * weightFactor * 1000),
-            SugarMg: (long)Math.Round((nutrients.SugarPer100g ?? 0) * weightFactor * 1000),
-            Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
-            Restricted: false);
     }
 }

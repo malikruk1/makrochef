@@ -72,7 +72,19 @@ public class WeekOverWeekAnalyzer(IMakroChefMcpClient mcpClient)
                 continue;
             }
 
-            var nutrients = await nutritionResolver.ResolveAsync(slug, barcode: null, cancellationToken);
+            NutrientInfo? nutrients;
+            try
+            {
+                nutrients = await nutritionResolver.ResolveAsync(slug, barcode: null, cancellationToken);
+            }
+            catch (Exception)
+            {
+                // Confirmed live (2026-09-14): a delisted historical purchase can make
+                // get_product_details return a plain-text error instead of JSON - skip it rather
+                // than sinking the whole week-over-week comparison.
+                continue;
+            }
+
             if (nutrients?.ProteinPer100g is not null)
             {
                 proteinPer100gById[productId] = nutrients.ProteinPer100g.Value;

@@ -43,26 +43,36 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
 
         foreach (var productId in productIds)
         {
-            var slug = await ResolveSlugAsync(productId, cancellationToken) ?? productId;
-            var detailsJson = await client.CallToolAsync(
-                "silpo_get_product_details",
-                new Dictionary<string, object?>
-                {
-                    ["branchId"] = session.BranchId,
-                    ["deliveryType"] = session.DeliveryType,
-                    ["timeslotStart"] = session.TimeslotStart,
-                    ["timeslotEnd"] = session.TimeslotEnd,
-                    ["slug"] = slug,
-                },
-                cancellationToken);
-
-            var category = NutrientCompletenessChecker.ExtractCategory(detailsJson);
-            totalByCategory[category] = totalByCategory.GetValueOrDefault(category) + 1;
-
-            if (NutrientCompletenessChecker.HasFullMacros(detailsJson))
+            try
             {
-                fullMacroCount++;
-                fullByCategory[category] = fullByCategory.GetValueOrDefault(category) + 1;
+                var slug = await ResolveSlugAsync(productId, cancellationToken) ?? productId;
+                var detailsJson = await client.CallToolAsync(
+                    "silpo_get_product_details",
+                    new Dictionary<string, object?>
+                    {
+                        ["branchId"] = session.BranchId,
+                        ["deliveryType"] = session.DeliveryType,
+                        ["timeslotStart"] = session.TimeslotStart,
+                        ["timeslotEnd"] = session.TimeslotEnd,
+                        ["slug"] = slug,
+                    },
+                    cancellationToken);
+
+                var category = NutrientCompletenessChecker.ExtractCategory(detailsJson);
+                totalByCategory[category] = totalByCategory.GetValueOrDefault(category) + 1;
+
+                if (NutrientCompletenessChecker.HasFullMacros(detailsJson))
+                {
+                    fullMacroCount++;
+                    fullByCategory[category] = fullByCategory.GetValueOrDefault(category) + 1;
+                }
+            }
+            catch (Exception)
+            {
+                // A single historical SKU that's since been discontinued/delisted can make the
+                // real MCP server return a plain-text error instead of JSON (confirmed live,
+                // 2026-09-14) - one bad product must not sink the whole coverage report, just
+                // like an unresolvable nutrient already skips that one candidate elsewhere.
             }
         }
 

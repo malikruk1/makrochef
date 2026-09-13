@@ -81,36 +81,47 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
 
     private async Task<Candidate?> ResolveCandidateAsync(string productId, string slug, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
     {
-        var detailsJson = await mcpClient.CallToolAsync(
-            "silpo_get_product_details",
-            new Dictionary<string, object?>
-            {
-                ["branchId"] = session.BranchId,
-                ["deliveryType"] = session.DeliveryType,
-                ["timeslotStart"] = session.TimeslotStart,
-                ["timeslotEnd"] = session.TimeslotEnd,
-                ["slug"] = slug,
-            },
-            cancellationToken);
-        var details = ProductDetailsParser.Parse(productId, detailsJson);
-
-        var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
-        if (nutrients is null)
+        try
         {
-            return null; // no usable nutrient data - can't let the solver reason about it
+            var detailsJson = await mcpClient.CallToolAsync(
+                "silpo_get_product_details",
+                new Dictionary<string, object?>
+                {
+                    ["branchId"] = session.BranchId,
+                    ["deliveryType"] = session.DeliveryType,
+                    ["timeslotStart"] = session.TimeslotStart,
+                    ["timeslotEnd"] = session.TimeslotEnd,
+                    ["slug"] = slug,
+                },
+                cancellationToken);
+
+            var details = ProductDetailsParser.Parse(productId, detailsJson);
+
+            var nutrients = await nutritionResolver.ResolveAsync(slug, details.Barcode, cancellationToken);
+            if (nutrients is null)
+            {
+                return null; // no usable nutrient data - can't let the solver reason about it
+            }
+
+            var weightFactor = details.WeightGrams / 100m;
+            var restricted = restrictedCategories.Contains(details.Category, StringComparer.OrdinalIgnoreCase);
+
+            return new Candidate(
+                ProductId: productId,
+                Category: details.Category,
+                PriceKopecks: details.PriceKopecks,
+                ProteinMg: ToMilligrams(nutrients.ProteinPer100g, weightFactor),
+                SugarMg: ToMilligrams(nutrients.SugarPer100g, weightFactor),
+                Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
+                Restricted: restricted);
         }
-
-        var weightFactor = details.WeightGrams / 100m;
-        var restricted = restrictedCategories.Contains(details.Category, StringComparer.OrdinalIgnoreCase);
-
-        return new Candidate(
-            ProductId: productId,
-            Category: details.Category,
-            PriceKopecks: details.PriceKopecks,
-            ProteinMg: ToMilligrams(nutrients.ProteinPer100g, weightFactor),
-            SugarMg: ToMilligrams(nutrients.SugarPer100g, weightFactor),
-            Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
-            Restricted: restricted);
+        catch (Exception)
+        {
+            // Confirmed live (2026-09-14): a delisted/unavailable product can make the real MCP
+            // server return a plain-text error instead of JSON at any step here - one bad
+            // candidate must not sink the whole pool, same as the "no usable nutrient data" skip.
+            return null;
+        }
     }
 
     private static long ToMilligrams(decimal? gramsPer100g, decimal weightFactor) =>
