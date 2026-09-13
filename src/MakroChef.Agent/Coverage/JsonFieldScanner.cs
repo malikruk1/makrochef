@@ -104,6 +104,71 @@ public static class JsonFieldScanner
         return results;
     }
 
+    /// <summary>One (date, productId, quantity) row per line item across all orders, best-effort
+    /// — used by week-over-week analysis (TASKS.md, screen 6) to group actual purchases by
+    /// calendar week. Quantity defaults to 1 when the field is missing/unconfirmed live.</summary>
+    public static IReadOnlyList<(DateTimeOffset Date, string ProductId, int Quantity)> ExtractOrderItems(string json)
+    {
+        var results = new List<(DateTimeOffset, string, int)>();
+        var root = Parse(json);
+
+        foreach (var order in EnumerateOrderLikeObjects(root))
+        {
+            DateTimeOffset? date = null;
+            foreach (var prop in order.EnumerateObject())
+            {
+                if (date is null && DateKeyCandidates.Contains(prop.Name, StringComparer.OrdinalIgnoreCase)
+                    && prop.Value.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(prop.Value.GetString(), out var parsed))
+                {
+                    date = parsed;
+                }
+            }
+
+            if (date is null || !order.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                string? productId = null;
+                foreach (var key in SkuKeyCandidates)
+                {
+                    if (item.TryGetProperty(key, out var idValue) && idValue.ValueKind == JsonValueKind.String)
+                    {
+                        productId = idValue.GetString();
+                        break;
+                    }
+                }
+
+                if (productId is null)
+                {
+                    continue;
+                }
+
+                var quantity = 1;
+                foreach (var key in new[] { "quantity", "qty", "count" })
+                {
+                    if (item.TryGetProperty(key, out var qtyValue) && qtyValue.ValueKind == JsonValueKind.Number)
+                    {
+                        quantity = qtyValue.GetInt32();
+                        break;
+                    }
+                }
+
+                results.Add((date.Value, productId, quantity));
+            }
+        }
+
+        return results;
+    }
+
     private static IEnumerable<JsonElement> EnumerateOrderLikeObjects(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Array)

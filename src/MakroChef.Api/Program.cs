@@ -448,6 +448,54 @@ app.MapPost("/api/checkout", async (MakroChefDbContext db, CheckoutRequest? body
     });
 });
 
+app.MapGet("/api/week-over-week", async (MakroChefDbContext db) =>
+{
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+
+    WeekOverWeekResult? result;
+    try
+    {
+        result = await new WeekOverWeekAnalyzer(mcpClient).AnalyzeAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося порівняти тижні: {ex.Message}", statusCode: 502);
+    }
+
+    if (result is null)
+    {
+        return Results.Problem("У гостя ще немає кошика.", statusCode: 409);
+    }
+
+    if (!result.HasEnoughData)
+    {
+        return Results.Ok(new { hasEnoughData = false });
+    }
+
+    return Results.Ok(new
+    {
+        hasEnoughData = true,
+        isRetrospective = true,
+        lastWeekGapGrams = result.LastWeekProteinGapGrams,
+        thisWeekGapGrams = result.ThisWeekProteinGapGrams,
+    });
+});
+
 app.MapGet("/health", async (MakroChefDbContext db, BasketSolver solver) =>
 {
     string dbStatus;

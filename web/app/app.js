@@ -48,8 +48,8 @@ function render() {
   }
 }
 
-// Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». Screens
-// 2-5 are wired so far - see BLOCKERS.md for what's still needed for 6.
+// Real (non-mock) data: fetches this backend's own API, which itself calls MCP «Сільпо». All six
+// screens are wired now - see BLOCKERS.md for known approximations/gaps in each.
 async function renderLive(screenId) {
   if (screenId === "3") {
     return renderLiveBasket();
@@ -61,6 +61,10 @@ async function renderLive(screenId) {
 
   if (screenId === "5") {
     return renderLiveCheckout(false);
+  }
+
+  if (screenId === "6") {
+    return renderLiveWeekOverWeek();
   }
 
   if (screenId !== "2") {
@@ -248,6 +252,38 @@ async function confirmApplyBonusAndRerender() {
   } catch {
     el.innerHTML = renderError();
   }
+}
+
+async function renderLiveWeekOverWeek() {
+  const res = await fetch("/api/week-over-week");
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const w = await res.json();
+
+  if (!w.hasEnoughData) {
+    return `<div class="state-empty">Замало даних для порівняння тижнів.</div>`;
+  }
+
+  return `
+    <h1 class="app-title">Тиждень до тижня (реальні дані)</h1>
+    ${w.isRetrospective ? '<p style="font-size:11px;color:var(--text-muted)">Ретроспектива на історичних даних.</p>' : ""}
+    <div class="compare-card">
+      <div class="compare-row">
+        <div><div class="compare-number">${w.lastWeekGapGrams} г</div><div class="delta">було</div></div>
+        <div class="arrow">→</div>
+        <div><div class="compare-number" style="color:var(--success)">${w.thisWeekGapGrams} г</div><div class="delta">стало</div></div>
+      </div>
+      <div class="compare-delta delta ${w.thisWeekGapGrams <= w.lastWeekGapGrams ? "good" : ""}">
+        ${w.thisWeekGapGrams <= w.lastWeekGapGrams ? "дефіцит білка скоротився" : "дефіцит білка зріс"}
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted)">
+      Наближено: кожна позиція в чеку рахується як ~100г (реальна вага з get_product_details ще не
+      підтягується для історичних покупок — надто багато MCP-викликів на весь чек).
+    </p>
+  `;
 }
 
 function renderLoading() {
