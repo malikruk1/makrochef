@@ -14,11 +14,11 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
     {
         var emptyArgs = new Dictionary<string, object?>();
 
-        var profileJson = await mcpClient.CallToolAsync("get_my_profile", emptyArgs, cancellationToken);
-        var familyJson = await mcpClient.CallToolAsync("get_my_family", emptyArgs, cancellationToken);
-        var restrictionsJson = await mcpClient.CallToolAsync("get_my_food_restrictions", emptyArgs, cancellationToken);
-        var addressesJson = await mcpClient.CallToolAsync("get_my_delivery_addresses", emptyArgs, cancellationToken);
-        var loyaltyJson = await mcpClient.CallToolAsync("get_loyalty_info", emptyArgs, cancellationToken);
+        var profileJson = await mcpClient.CallToolAsync("silpo_get_my_profile", emptyArgs, cancellationToken);
+        var familyJson = await mcpClient.CallToolAsync("silpo_get_my_family", emptyArgs, cancellationToken);
+        var restrictionsJson = await mcpClient.CallToolAsync("silpo_get_my_food_restrictions", emptyArgs, cancellationToken);
+        var addressesJson = await mcpClient.CallToolAsync("silpo_get_my_delivery_addresses", emptyArgs, cancellationToken);
+        var loyaltyJson = await mcpClient.CallToolAsync("silpo_get_loyalty_info", emptyArgs, cancellationToken);
 
         return new GuestProfile(
             AgeYears: ExtractAge(profileJson),

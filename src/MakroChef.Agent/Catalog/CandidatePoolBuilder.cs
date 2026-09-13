@@ -19,7 +19,7 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
         if (request.SeedProductIds.Count > 0)
         {
             var batchJson = await mcpClient.CallToolAsync(
-                "find_products_batch",
+                "silpo_find_products_batch",
                 new Dictionary<string, object?> { ["productIds"] = request.SeedProductIds },
                 cancellationToken);
             productIds.UnionWith(JsonFieldScanner.ExtractProductIds(batchJson));
@@ -28,7 +28,7 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
         foreach (var category in request.DeficitCategories)
         {
             var productsJson = await mcpClient.CallToolAsync(
-                "get_products",
+                "silpo_get_products",
                 new Dictionary<string, object?> { ["category"] = category, ["onPromotion"] = true },
                 cancellationToken);
             productIds.UnionWith(JsonFieldScanner.ExtractProductIds(productsJson));
@@ -50,7 +50,7 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
     private async Task<Candidate?> ResolveCandidateAsync(string productId, IReadOnlyList<string> restrictedCategories, CancellationToken cancellationToken)
     {
         var detailsJson = await mcpClient.CallToolAsync(
-            "get_product_details",
+            "silpo_get_product_details",
             new Dictionary<string, object?> { ["productId"] = productId },
             cancellationToken);
         var details = ProductDetailsParser.Parse(productId, detailsJson);

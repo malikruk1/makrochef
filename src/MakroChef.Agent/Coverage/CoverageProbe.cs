@@ -12,8 +12,8 @@ public class CoverageProbe(IMakroChefMcpClient client)
 
     public async Task<CoverageReport> RunAsync(CancellationToken cancellationToken = default)
     {
-        var offlineOrdersJson = await client.CallToolAsync("get_my_offline_orders", new Dictionary<string, object?>(), cancellationToken);
-        var onlineOrdersJson = await client.CallToolAsync("get_my_online_orders", new Dictionary<string, object?>(), cancellationToken);
+        var offlineOrdersJson = await client.CallToolAsync("silpo_get_my_offline_orders", new Dictionary<string, object?>(), cancellationToken);
+        var onlineOrdersJson = await client.CallToolAsync("silpo_get_my_online_orders", new Dictionary<string, object?>(), cancellationToken);
 
         var productIds = new HashSet<string>();
         productIds.UnionWith(JsonFieldScanner.ExtractProductIds(offlineOrdersJson));
@@ -30,7 +30,7 @@ public class CoverageProbe(IMakroChefMcpClient client)
         foreach (var productId in productIds)
         {
             var detailsJson = await client.CallToolAsync(
-                "get_product_details",
+                "silpo_get_product_details",
                 new Dictionary<string, object?> { ["productId"] = productId },
                 cancellationToken);
 

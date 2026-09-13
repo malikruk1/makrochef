@@ -18,7 +18,7 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
         foreach (var productId in usualCartProductIds)
         {
             var oldDetailsJson = await mcpClient.CallToolAsync(
-                "get_product_details", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
+                "silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
             var oldDetails = ProductDetailsParser.Parse(productId, oldDetailsJson);
             var oldNutrients = await nutritionResolver.ResolveAsync(productId, oldDetails.Barcode, cancellationToken);
             if (oldNutrients is null)
@@ -27,7 +27,7 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
             }
 
             var similarJson = await mcpClient.CallToolAsync(
-                "get_similar_products", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
+                "silpo_get_similar_products", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
 
             foreach (var candidateId in JsonFieldScanner.ExtractProductIds(similarJson))
             {
@@ -51,7 +51,7 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
         string oldProductId, ProductDetails oldDetails, NutrientInfo oldNutrients, string candidateId, CancellationToken cancellationToken)
     {
         var newDetailsJson = await mcpClient.CallToolAsync(
-            "get_product_details", new Dictionary<string, object?> { ["productId"] = candidateId }, cancellationToken);
+            "silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = candidateId }, cancellationToken);
         var newDetails = ProductDetailsParser.Parse(candidateId, newDetailsJson);
         var newNutrients = await nutritionResolver.ResolveAsync(candidateId, newDetails.Barcode, cancellationToken);
         if (newNutrients is null)

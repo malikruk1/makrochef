@@ -19,6 +19,21 @@ if (args is ["auth"])
     return await AuthCommand.RunAsync(mcpBaseUri, devUserId, authTokenStore, authTokenEncryptor);
 }
 
+if (args is ["diag"])
+{
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var diagConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+        ?? "Host=localhost;Database=makrochef;Username=postgres;Password=postgres";
+    var diagEncryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    using var diagDb = new MakroChefDbContext(new DbContextOptionsBuilder<MakroChefDbContext>().UseNpgsql(diagConnectionString).Options);
+    var diagTokenStore = new EfMcpTokenStore(diagDb);
+    var diagTokenEncryptor = new TokenEncryptor(diagEncryptionKey);
+
+    return await DiagCommand.RunAsync(mcpBaseUri, devUserId, diagDb, diagTokenStore, diagTokenEncryptor);
+}
+
 if (args is ["probe"])
 {
     // No real user/session model yet (that's section 4) - a single dev user until then.

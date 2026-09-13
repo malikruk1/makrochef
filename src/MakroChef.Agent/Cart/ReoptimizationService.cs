@@ -42,7 +42,7 @@ public class ReoptimizationService(
                 candidates.RemoveAll(c => c.ProductId == problemProductId);
 
                 var replacementsJson = await mcpClient.CallToolAsync(
-                    "get_replacements", new Dictionary<string, object?> { ["productId"] = problemProductId }, cancellationToken);
+                    "silpo_get_replacements", new Dictionary<string, object?> { ["productId"] = problemProductId }, cancellationToken);
 
                 foreach (var replacementId in JsonFieldScanner.ExtractProductIds(replacementsJson))
                 {
@@ -82,7 +82,7 @@ public class ReoptimizationService(
     private async Task<Candidate?> ResolveReplacementCandidateAsync(string productId, CancellationToken cancellationToken)
     {
         var detailsJson = await mcpClient.CallToolAsync(
-            "get_product_details", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
+            "silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = productId }, cancellationToken);
         var details = ProductDetailsParser.Parse(productId, detailsJson);
 
         var nutrients = await nutritionResolver.ResolveAsync(productId, details.Barcode, cancellationToken);

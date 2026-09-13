@@ -24,8 +24,8 @@ public class CachingMcpClientTests
         await using var client = new CachingMcpClient(inner, new CachingMcpClientOptions());
 
         var args = new Dictionary<string, object?> { ["productId"] = "sku-123" };
-        var first = await client.CallToolAsync("get_product_details", args);
-        var second = await client.CallToolAsync("get_product_details", args);
+        var first = await client.CallToolAsync("silpo_get_product_details", args);
+        var second = await client.CallToolAsync("silpo_get_product_details", args);
 
         Assert.Equal(first, second);
         Assert.Equal(1, StubTools.GetProductDetailsCallCount);
@@ -46,8 +46,8 @@ public class CachingMcpClientTests
         var inner = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
         await using var client = new CachingMcpClient(inner, new CachingMcpClientOptions());
 
-        await client.CallToolAsync("get_product_details", new Dictionary<string, object?> { ["productId"] = "sku-1" });
-        await client.CallToolAsync("get_product_details", new Dictionary<string, object?> { ["productId"] = "sku-2" });
+        await client.CallToolAsync("silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = "sku-1" });
+        await client.CallToolAsync("silpo_get_product_details", new Dictionary<string, object?> { ["productId"] = "sku-2" });
 
         Assert.Equal(2, StubTools.GetProductDetailsCallCount);
     }

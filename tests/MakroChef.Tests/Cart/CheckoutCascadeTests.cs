@@ -45,14 +45,14 @@ public class CheckoutCascadeTests
 
         var expectedOrder = new[]
         {
-            "get_my_premium_subscription",
-            "get_my_certificates",
-            "add_or_update_certificates",
-            "get_promo_codes",
-            "update_shopping_cart", // promo code
-            "get_loyalty_info",
-            "update_shopping_cart", // bonus
-            "get_shopping_cart_by_id",
+            "silpo_get_my_premium_subscription",
+            "silpo_get_my_certificates",
+            "silpo_add_or_update_certificates",
+            "silpo_get_promo_codes",
+            "silpo_update_shopping_cart", // promo code
+            "silpo_get_loyalty_info",
+            "silpo_update_shopping_cart", // bonus
+            "silpo_get_shopping_cart_by_id",
         };
 
         Assert.Equal(expectedOrder, calls);
@@ -78,7 +78,7 @@ public class CheckoutCascadeTests
         // The fixture offers SAVE5 (discount 5) and SAVE20 (discount 20) - the cascade must
         // pick SAVE20, the largest, per TASKS.md 7.3 "найвигідніший".
         var promoCall = await db.McpCalls
-            .Where(c => c.SessionId == sessionId && c.Tool == "update_shopping_cart")
+            .Where(c => c.SessionId == sessionId && c.Tool == "silpo_update_shopping_cart")
             .OrderBy(c => c.CreatedAt)
             .FirstAsync();
         Assert.NotEqual("-", promoCall.ArgsHash);
@@ -109,7 +109,7 @@ public class CheckoutCascadeTests
         Assert.True(wasAsked, "Must still ask, even if the answer turns out to be no.");
 
         var updateCartCalls = await db.McpCalls
-            .Where(c => c.SessionId == sessionId && c.Tool == "update_shopping_cart")
+            .Where(c => c.SessionId == sessionId && c.Tool == "silpo_update_shopping_cart")
             .CountAsync();
         Assert.Equal(1, updateCartCalls); // only the promo-code update, not a second one for bonuses
     }

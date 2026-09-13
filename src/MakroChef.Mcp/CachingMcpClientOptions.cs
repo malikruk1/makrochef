@@ -10,8 +10,8 @@ public class CachingMcpClientOptions
 
     private readonly Dictionary<string, TimeSpan> _ttlByTool = new()
     {
-        ["get_product_details"] = TimeSpan.FromMinutes(15),
-        ["get_categories_tree"] = Forever,
+        ["silpo_get_product_details"] = TimeSpan.FromMinutes(15),
+        ["silpo_get_categories_tree"] = Forever,
     };
 
     public TimeSpan? GetTtl(string toolName) => _ttlByTool.TryGetValue(toolName, out var ttl) ? ttl : null;

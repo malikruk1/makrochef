@@ -16,7 +16,7 @@ public class ExactMcpNutritionResolver(IMakroChefMcpClient mcpClient) : INutriti
     public async Task<NutrientInfo?> ResolveAsync(string productId, string? barcode, CancellationToken cancellationToken = default)
     {
         var json = await mcpClient.CallToolAsync(
-            "get_product_details",
+            "silpo_get_product_details",
             new Dictionary<string, object?> { ["productId"] = productId },
             cancellationToken);
 

@@ -8,7 +8,7 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
 {
     public async Task<CartState> GetCartAsync(CancellationToken cancellationToken = default)
     {
-        var json = await mcpClient.CallToolAsync("get_shopping_cart_by_id", new Dictionary<string, object?>(), cancellationToken);
+        var json = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", new Dictionary<string, object?>(), cancellationToken);
         return CartResponseParser.Parse(json);
     }
 
@@ -25,7 +25,7 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
             var shouldClear = await confirmClearIfNotEmpty();
             if (shouldClear)
             {
-                await mcpClient.CallToolAsync("clear_shopping_cart", new Dictionary<string, object?>(), cancellationToken);
+                await mcpClient.CallToolAsync("silpo_clear_shopping_cart", new Dictionary<string, object?>(), cancellationToken);
             }
         }
 
@@ -37,7 +37,7 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
 
     public Task AddOrUpdateAsync(IReadOnlyList<Domain.Solver.BasketLine> lines, CancellationToken cancellationToken = default) =>
         mcpClient.CallToolAsync(
-            "add_or_update_cart_products",
+            "silpo_add_or_update_cart_products",
             new Dictionary<string, object?>
             {
                 ["items"] = lines.Select(l => new Dictionary<string, object?>
@@ -54,7 +54,7 @@ public class BasketAssembler(IMakroChefMcpClient mcpClient, string companyId, st
         productIds.Count == 0
             ? Task.CompletedTask
             : mcpClient.CallToolAsync(
-                "remove_cart_products",
+                "silpo_remove_cart_products",
                 new Dictionary<string, object?> { ["productIds"] = productIds },
                 cancellationToken);
 }

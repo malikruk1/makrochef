@@ -14,7 +14,7 @@ public static class StubTools
     [McpServerTool(Name = "silpo_ping"), Description("Stub tool for gate 3.1 tests.")]
     public static string Ping(string message) => $"pong:{message}";
 
-    [McpServerTool(Name = "get_product_details"), Description("Stub tool for gate 3.3/3.4/6 tests.")]
+    [McpServerTool(Name = "silpo_get_product_details"), Description("Stub tool for gate 3.3/3.4/6 tests.")]
     public static string GetProductDetails(string productId)
     {
         Interlocked.Increment(ref GetProductDetailsCallCount);
@@ -37,51 +37,51 @@ public static class StubTools
             """;
     }
 
-    [McpServerTool(Name = "get_my_offline_orders"), Description("Stub fixture for gate 3.4.")]
+    [McpServerTool(Name = "silpo_get_my_offline_orders"), Description("Stub fixture for gate 3.4.")]
     public static string GetMyOfflineOrders() => CoverageFixture.OfflineOrdersJson;
 
-    [McpServerTool(Name = "get_my_online_orders"), Description("Stub fixture for gate 3.4.")]
+    [McpServerTool(Name = "silpo_get_my_online_orders"), Description("Stub fixture for gate 3.4.")]
     public static string GetMyOnlineOrders() => CoverageFixture.OnlineOrdersJson;
 
-    [McpServerTool(Name = "get_my_profile"), Description("Stub fixture for gate 4.1.")]
+    [McpServerTool(Name = "silpo_get_my_profile"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyProfile() => """{"birthDate":"1995-06-15T00:00:00Z"}""";
 
-    [McpServerTool(Name = "get_my_family"), Description("Stub fixture for gate 4.1.")]
+    [McpServerTool(Name = "silpo_get_my_family"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyFamily() => """{"members":[{"age":8},{"age":40}]}""";
 
-    [McpServerTool(Name = "get_my_food_restrictions"), Description("Stub fixture for gate 4.1.")]
+    [McpServerTool(Name = "silpo_get_my_food_restrictions"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyFoodRestrictions() => """{"restrictions":["риба","горіхи"]}""";
 
-    [McpServerTool(Name = "get_my_delivery_addresses"), Description("Stub fixture for gate 4.1.")]
+    [McpServerTool(Name = "silpo_get_my_delivery_addresses"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyDeliveryAddresses() => """[{"city":"Київ","street":"Хрещатик"}]""";
 
-    [McpServerTool(Name = "get_loyalty_info"), Description("Stub fixture for gate 4.1.")]
+    [McpServerTool(Name = "silpo_get_loyalty_info"), Description("Stub fixture for gate 4.1.")]
     public static string GetLoyaltyInfo() => """{"bonusBalance":275.5}""";
 
-    [McpServerTool(Name = "find_products_batch"), Description("Stub fixture for gate 6.1.")]
+    [McpServerTool(Name = "silpo_find_products_batch"), Description("Stub fixture for gate 6.1.")]
     public static string FindProductsBatch() => CatalogFixture.SeedProductsJson;
 
-    [McpServerTool(Name = "get_products"), Description("Stub fixture for gate 6.1.")]
+    [McpServerTool(Name = "silpo_get_products"), Description("Stub fixture for gate 6.1.")]
     public static string GetProducts(string category) => CatalogFixture.ProductsByCategory(category);
 
-    [McpServerTool(Name = "get_similar_products"), Description("Stub fixture for gate 6.2.")]
+    [McpServerTool(Name = "silpo_get_similar_products"), Description("Stub fixture for gate 6.2.")]
     public static string GetSimilarProducts(string productId) => CatalogFixture.SimilarProducts(productId);
 
-    [McpServerTool(Name = "get_replacements"), Description("Stub fixture for gate 7.2.")]
+    [McpServerTool(Name = "silpo_get_replacements"), Description("Stub fixture for gate 7.2.")]
     public static string GetReplacements(string productId) => productId switch
     {
         "test_cheese" => """[{"productId":"cheese_b"}]""",
         _ => "[]",
     };
 
-    [McpServerTool(Name = "clear_shopping_cart"), Description("Stub cart for gate 7.")]
+    [McpServerTool(Name = "silpo_clear_shopping_cart"), Description("Stub cart for gate 7.")]
     public static string ClearShoppingCart()
     {
         StubCartState.Lines.Clear();
         return """{"success":true}""";
     }
 
-    [McpServerTool(Name = "add_or_update_cart_products"), Description("Stub cart for gate 7.")]
+    [McpServerTool(Name = "silpo_add_or_update_cart_products"), Description("Stub cart for gate 7.")]
     public static string AddOrUpdateCartProducts(System.Text.Json.JsonElement items)
     {
         foreach (var item in items.EnumerateArray())
@@ -94,7 +94,7 @@ public static class StubTools
         return """{"success":true}""";
     }
 
-    [McpServerTool(Name = "remove_cart_products"), Description("Stub cart for gate 7.")]
+    [McpServerTool(Name = "silpo_remove_cart_products"), Description("Stub cart for gate 7.")]
     public static string RemoveCartProducts(string[] productIds)
     {
         foreach (var id in productIds)
@@ -105,7 +105,7 @@ public static class StubTools
         return """{"success":true}""";
     }
 
-    [McpServerTool(Name = "get_shopping_cart_by_id"), Description("Stub cart for gate 7.")]
+    [McpServerTool(Name = "silpo_get_shopping_cart_by_id"), Description("Stub cart for gate 7.")]
     public static string GetShoppingCartById()
     {
         var items = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}}}""");
@@ -120,19 +120,19 @@ public static class StubTools
         return $$"""{"items":[{{string.Join(",", items)}}],"validations":[{{string.Join(",", validations)}}],"totalAmount":0{{links}}}""";
     }
 
-    [McpServerTool(Name = "get_my_premium_subscription"), Description("Stub fixture for gate 7.3.")]
+    [McpServerTool(Name = "silpo_get_my_premium_subscription"), Description("Stub fixture for gate 7.3.")]
     public static string GetMyPremiumSubscription() => """{"isPremium":false}""";
 
-    [McpServerTool(Name = "get_my_certificates"), Description("Stub fixture for gate 7.3.")]
+    [McpServerTool(Name = "silpo_get_my_certificates"), Description("Stub fixture for gate 7.3.")]
     public static string GetMyCertificates() => """[{"certificateId":"cert-1"}]""";
 
-    [McpServerTool(Name = "add_or_update_certificates"), Description("Stub cart for gate 7.3.")]
+    [McpServerTool(Name = "silpo_add_or_update_certificates"), Description("Stub cart for gate 7.3.")]
     public static string AddOrUpdateCertificates() { StubCartState.CheckoutReady = true; return """{"success":true}"""; }
 
-    [McpServerTool(Name = "get_promo_codes"), Description("Stub fixture for gate 7.3.")]
+    [McpServerTool(Name = "silpo_get_promo_codes"), Description("Stub fixture for gate 7.3.")]
     public static string GetPromoCodes() => """[{"code":"SAVE5","discountAmount":5},{"code":"SAVE20","discountAmount":20}]""";
 
-    [McpServerTool(Name = "update_shopping_cart"), Description("Stub cart for gate 7.3.")]
+    [McpServerTool(Name = "silpo_update_shopping_cart"), Description("Stub cart for gate 7.3.")]
     public static string UpdateShoppingCart() => """{"success":true}""";
 }
 

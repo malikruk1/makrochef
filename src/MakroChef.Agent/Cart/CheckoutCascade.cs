@@ -14,43 +14,43 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient)
 
         // a) Premium changes delivery terms and therefore the baseline (TASKS.md 4.3) - read
         // it first so everything downstream accounts for it.
-        await mcpClient.CallToolAsync("get_my_premium_subscription", emptyArgs, cancellationToken);
+        await mcpClient.CallToolAsync("silpo_get_my_premium_subscription", emptyArgs, cancellationToken);
 
         // b) Certificates
-        var certificatesJson = await mcpClient.CallToolAsync("get_my_certificates", emptyArgs, cancellationToken);
+        var certificatesJson = await mcpClient.CallToolAsync("silpo_get_my_certificates", emptyArgs, cancellationToken);
         var certificateIds = ExtractIds(certificatesJson, "certificateId");
         if (certificateIds.Count > 0)
         {
             await mcpClient.CallToolAsync(
-                "add_or_update_certificates",
+                "silpo_add_or_update_certificates",
                 new Dictionary<string, object?> { ["certificateIds"] = certificateIds },
                 cancellationToken);
         }
 
         // c) Most advantageous promo code
-        var promoCodesJson = await mcpClient.CallToolAsync("get_promo_codes", emptyArgs, cancellationToken);
+        var promoCodesJson = await mcpClient.CallToolAsync("silpo_get_promo_codes", emptyArgs, cancellationToken);
         var bestPromoCode = ExtractBestPromoCode(promoCodesJson);
         if (bestPromoCode is not null)
         {
             await mcpClient.CallToolAsync(
-                "update_shopping_cart",
+                "silpo_update_shopping_cart",
                 new Dictionary<string, object?> { ["promoCode"] = bestPromoCode },
                 cancellationToken);
         }
 
         // d) Bonus balance - ask, never apply silently
-        var loyaltyJson = await mcpClient.CallToolAsync("get_loyalty_info", emptyArgs, cancellationToken);
+        var loyaltyJson = await mcpClient.CallToolAsync("silpo_get_loyalty_info", emptyArgs, cancellationToken);
         var (bonusAvailable, bonusRequested, isEnabled) = ParseLoyalty(loyaltyJson);
         if (bonusAvailable > 0 && bonusRequested is null && isEnabled && await confirmApplyBonus(bonusAvailable))
         {
             await mcpClient.CallToolAsync(
-                "update_shopping_cart",
+                "silpo_update_shopping_cart",
                 new Dictionary<string, object?> { ["bonusRequested"] = bonusAvailable },
                 cancellationToken);
         }
 
         // e) Final read -> checkout links
-        var cartJson = await mcpClient.CallToolAsync("get_shopping_cart_by_id", emptyArgs, cancellationToken);
+        var cartJson = await mcpClient.CallToolAsync("silpo_get_shopping_cart_by_id", emptyArgs, cancellationToken);
         return ExtractCheckoutLinks(cartJson);
     }
 
