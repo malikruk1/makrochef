@@ -1,4 +1,7 @@
 using MakroChef.Agent.Cart;
+using MakroChef.Agent.Catalog;
+using MakroChef.Agent.Coverage;
+using MakroChef.Agent.Llm;
 using MakroChef.Agent.Profiling;
 using MakroChef.Agent.Tracing;
 using MakroChef.Api.Commands;
@@ -61,6 +64,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Reused across requests (HttpClient is meant to be long-lived, not per-call) - only for the
+// optional Claude Messages API call in /api/basket/swaps; every other endpoint is unaffected.
+var sharedHttpClient = new HttpClient();
 
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? "Host=localhost;Database=makrochef;Username=postgres;Password=postgres";
@@ -503,6 +510,92 @@ app.MapGet("/api/week-over-week", async (MakroChefDbContext db) =>
         isRetrospective = true,
         lastWeekGapGrams = result.LastWeekProteinGapGrams,
         thisWeekGapGrams = result.ThisWeekProteinGapGrams,
+    });
+});
+
+app.MapGet("/api/basket/swaps", async (MakroChefDbContext db) =>
+{
+    // No real user/session model yet (that's section 4 broader work) - a single dev user until then.
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var mcpBaseUri = new Uri(Environment.GetEnvironmentVariable("MCP_BASE_URI") ?? "https://mcp.silpo.ua/mcp");
+    var encryptionKey = Environment.GetEnvironmentVariable("TOKEN_ENCRYPTION_KEY") ?? "dev-only-insecure-key";
+
+    var tokenStore = new EfMcpTokenStore(db);
+    var stored = await tokenStore.FindByUserAsync(devUserId);
+    if (stored is null)
+    {
+        return Results.Problem("Немає збереженого MCP-токена. Виконайте: dotnet run -- auth", statusCode: 503);
+    }
+
+    var tokenEncryptor = new TokenEncryptor(encryptionKey);
+    var accessToken = tokenEncryptor.Decrypt(new EncryptedToken(stored.EncryptedAccessToken, stored.AccessTokenNonce));
+    var recorder = new EfMcpCallRecorder(db);
+    await using var mcpClient = new MakroChefMcpClient(mcpBaseUri, new FixedTokenProvider(accessToken), recorder, devUserId);
+
+    SessionContext? session;
+    try
+    {
+        session = await new SessionBootstrap(mcpClient).EnsureAsync();
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося прочитати кошик: {ex.Message}", statusCode: 502);
+    }
+
+    if (session is null)
+    {
+        return Results.Problem("У гостя ще немає кошика — свопи рахувати нема з чого.", statusCode: 409);
+    }
+
+    IReadOnlyList<MakroChef.Domain.Catalog.ProductSwap> swaps;
+    try
+    {
+        var coverage = await new CoverageProbe(mcpClient, session).RunAsync();
+        var mode = coverage.CoveragePercent >= 60 ? NutritionResolverMode.Exact : NutritionResolverMode.CategoryIndex;
+        var nutritionResolver = NutritionResolverFactory.Create(mode, mcpClient, session);
+
+        var sessionArgs = new Dictionary<string, object?>
+        {
+            ["branchId"] = session.BranchId,
+            ["deliveryType"] = session.DeliveryType,
+            ["timeslotStart"] = session.TimeslotStart,
+            ["timeslotEnd"] = session.TimeslotEnd,
+        };
+        var offlineJson = await mcpClient.CallToolAsync("silpo_get_my_offline_orders", sessionArgs);
+        var onlineJson = await mcpClient.CallToolAsync("silpo_get_my_online_orders", sessionArgs);
+        var usualProductIds = new HashSet<string>();
+        usualProductIds.UnionWith(JsonFieldScanner.ExtractProductIds(offlineJson));
+        usualProductIds.UnionWith(JsonFieldScanner.ExtractProductIds(onlineJson));
+
+        swaps = await new SwapGenerator(mcpClient, nutritionResolver, session).GenerateAsync(usualProductIds.ToList());
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Не вдалося порахувати свопи: {ex.Message}", statusCode: 502);
+    }
+
+    // TASKS.md 0.2: LLM only ever narrates a swap the solver/delta math already decided on - it
+    // never picks or scores anything. ANTHROPIC_API_KEY is optional; SwapExplainer falls back to
+    // a deterministic template built from the same real numbers when it's unset or the call fails.
+    var anthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+    var llmClient = new AnthropicClient(sharedHttpClient, anthropicApiKey);
+    var explained = await new SwapExplainer(llmClient).ExplainAsync(swaps);
+
+    return Results.Ok(new
+    {
+        llmConfigured = !string.IsNullOrWhiteSpace(anthropicApiKey),
+        swaps = explained.Select(e => new
+        {
+            oldProductId = e.Swap.OldProductId,
+            oldName = e.Swap.OldName,
+            newProductId = e.Swap.NewProductId,
+            newName = e.Swap.NewName,
+            proteinDeltaGrams = e.Swap.ProteinDeltaGrams,
+            sugarDeltaGrams = e.Swap.SugarDeltaGrams,
+            priceDeltaKopecks = e.Swap.PriceDeltaKopecks,
+            onPromotion = e.Swap.OnPromotion,
+            explanation = e.Explanation,
+        }),
     });
 });
 

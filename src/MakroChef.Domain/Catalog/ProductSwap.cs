@@ -8,4 +8,6 @@ public record ProductSwap(
     decimal ProteinDeltaGrams,
     decimal SugarDeltaGrams,
     long PriceDeltaKopecks,
-    bool OnPromotion);
+    bool OnPromotion,
+    string? OldName = null,
+    string? NewName = null);

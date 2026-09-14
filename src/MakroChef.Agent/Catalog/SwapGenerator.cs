@@ -148,7 +148,7 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
                 return null;
             }
 
-            return new ProductSwap(oldProductId, candidateId, proteinDelta, sugarDelta, priceDelta, newDetails.OnPromotion);
+            return new ProductSwap(oldProductId, candidateId, proteinDelta, sugarDelta, priceDelta, newDetails.OnPromotion, oldDetails.Name, newDetails.Name);
         }
         catch (Exception)
         {

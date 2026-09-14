@@ -176,11 +176,52 @@ async function renderLiveBasket() {
       Джерело норми: ${b.normSource}. Покриття даних про нутрієнти: ${b.coveragePercent.toFixed(0)}%. Пул кандидатів: ${b.candidatePoolSize} товарів.
     </p>
     ${relaxedLine}
+    <div class="section-title">Свопи</div>
+    <div class="compare-card" id="swaps-section">
+      <button class="btn btn-secondary" style="width:100%" onclick="loadRealSwaps()">Показати свопи</button>
+    </div>
     <p style="font-size:11px;color:var(--text-muted)" id="basket-apply-status"></p>
     <div class="bottom-bar">
       <button class="btn btn-primary" style="width:100%" onclick="applyBasketAndProceed()">До оформлення</button>
     </div>
   `;
+}
+
+async function loadRealSwaps() {
+  const el = document.getElementById("swaps-section");
+  el.innerHTML = `<div class="skeleton"></div><div class="skeleton" style="width:70%"></div>`;
+
+  let s;
+  try {
+    const res = await fetch("/api/basket/swaps");
+    if (!res.ok) {
+      const problem = await res.json().catch(() => null);
+      throw new Error(problem?.detail ?? "request failed");
+    }
+    s = await res.json();
+  } catch {
+    el.innerHTML = `<div class="state-error">Не вдалося порахувати свопи.</div>`;
+    return;
+  }
+
+  if (s.swaps.length === 0) {
+    el.innerHTML = `<div class="state-empty">Кращих замін для звичного кошика не знайдено.</div>`;
+    return;
+  }
+
+  // TASKS.md 0.2: the LLM only narrates a swap the solver's own numbers already justified -
+  // llmConfigured:false means ANTHROPIC_API_KEY isn't set, so this is the deterministic
+  // fallback sentence, not a made-up one.
+  const llmNote = s.llmConfigured
+    ? ""
+    : `<p style="font-size:10px;color:var(--text-muted)">Пояснення згенеровано за формулою (ANTHROPIC_API_KEY не задано).</p>`;
+
+  el.innerHTML = s.swaps.map(sw => `
+    <div class="swap-row">
+      <div class="swap-old">${sw.oldName || sw.oldProductId}</div>
+      <div class="swap-new">→ ${sw.newName || sw.newProductId}</div>
+      <div class="swap-gain ${sw.sugarDeltaGrams <= 0 && sw.proteinDeltaGrams >= 0 ? "" : "compromise"}">${sw.explanation}</div>
+    </div>`).join("") + llmNote;
 }
 
 async function applyBasketToRealCart(confirmClear) {
