@@ -372,9 +372,9 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
     var oldIds = currentCart.Lines.Select(l => l.ProductId).ToHashSet();
     var newIds = result.FinalCart.Lines.Select(l => l.ProductId).ToHashSet();
     var diffCount = oldIds.Except(newIds).Count() + newIds.Except(oldIds).Count();
-    // Best-effort: names for products the reoptimizer added fresh (not in the original pool)
-    // aren't resolved here - falls back to null (UI shows the productId), honest rather than an
-    // extra round of MCP calls just for display.
+    // CartResponseParser now parses the real cart's own "name" per line (authoritative, covers
+    // replacement candidates the reoptimizer added fresh too) - fall back to the original pool's
+    // name only if the cart response itself somehow didn't carry one.
     var nameByProductId = plan.Request.Candidates.ToDictionary(c => c.ProductId, c => c.Name);
 
     return Results.Ok(new
@@ -385,7 +385,7 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
         iterations = result.Iterations,
         degradedNotes = result.DegradedNotes,
         newBasketDiffCount = diffCount,
-        lines = result.FinalCart.Lines.Select(l => new { productId = l.ProductId, name = nameByProductId.GetValueOrDefault(l.ProductId), quantity = l.Quantity }),
+        lines = result.FinalCart.Lines.Select(l => new { productId = l.ProductId, name = l.Name ?? nameByProductId.GetValueOrDefault(l.ProductId), quantity = l.Quantity }),
         totalAfterDiscounts = result.FinalCart.TotalKopecks / 100m,
     });
 });
