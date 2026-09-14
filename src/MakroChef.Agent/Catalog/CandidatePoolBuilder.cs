@@ -152,6 +152,12 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
                 SugarMg: ToMilligrams(nutrients.SugarPer100g, weightFactor),
                 Kcal: (long)Math.Round((nutrients.KcalPer100g ?? 0) * weightFactor),
                 Restricted: restricted,
+                // Confirmed live (2026-09-14): the record's own default (4) let the solver pile up
+                // on one cheap high-protein SKU (e.g. one peanut product x4) to fill most of the
+                // whole 5-unit category cap alone - a real basket, but a visually repetitive one
+                // for a demo. Capping any single real product at 2 units forces the category cap
+                // to be filled by at least 3 distinct products instead.
+                MaxUnits: 2,
                 Name: details.Name,
                 CompanyId: details.CompanyId);
         }
