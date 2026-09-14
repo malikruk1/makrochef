@@ -221,7 +221,7 @@ app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
     BasketPlanResult? plan;
     try
     {
-        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+        plan = await new BasketPlanner(mcpClient, loggingSolver, db).PlanAsync();
     }
     catch (Exception ex)
     {
@@ -291,7 +291,7 @@ app.MapPost("/api/basket/apply", async (MakroChefDbContext db, BasketSolver solv
     BasketPlanResult? plan;
     try
     {
-        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+        plan = await new BasketPlanner(mcpClient, loggingSolver, db).PlanAsync();
     }
     catch (Exception ex)
     {
@@ -379,7 +379,7 @@ app.MapPost("/api/basket/reoptimize", async (MakroChefDbContext db, BasketSolver
     BasketPlanResult? plan;
     try
     {
-        plan = await new BasketPlanner(mcpClient, loggingSolver).PlanAsync();
+        plan = await new BasketPlanner(mcpClient, loggingSolver, db).PlanAsync();
     }
     catch (Exception ex)
     {

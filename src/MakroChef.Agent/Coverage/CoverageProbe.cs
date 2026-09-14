@@ -37,15 +37,28 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
         orderTotals.AddRange(JsonFieldScanner.ExtractOrderTotals(offlineOrdersJson));
         orderTotals.AddRange(JsonFieldScanner.ExtractOrderTotals(onlineOrdersJson));
 
+        // Confirmed live (2026-09-14): resolving slugs one product at a time - each its own
+        // silpo_find_products_batch call - was pure waste, since that tool already accepts the
+        // whole list at once (CandidatePoolBuilder does this correctly for seed products). One
+        // batched call replaces what used to be up to ~90 sequential single-item calls.
+        var slugsById = await ResolveSlugsAsync(productIds, cancellationToken);
+
         var fullMacroCount = 0;
         var totalByCategory = new Dictionary<string, int>();
         var fullByCategory = new Dictionary<string, int>();
+        var categoryLock = new SemaphoreSlim(1, 1);
 
-        foreach (var productId in productIds)
+        // Same bounded-concurrency treatment as CandidatePoolBuilder (BLOCKERS.md,
+        // 2026-09-14): this was the other fully-sequential ~90-call loop making a real basket
+        // fetch take 90+ seconds end to end, invisible to the fix that only touched the pool.
+        const int maxConcurrency = 12;
+        using var throttle = new SemaphoreSlim(maxConcurrency);
+        var tasks = productIds.Select(async productId =>
         {
+            await throttle.WaitAsync(cancellationToken);
             try
             {
-                var slug = await ResolveSlugAsync(productId, cancellationToken) ?? productId;
+                var slug = slugsById.GetValueOrDefault(productId, productId);
                 var detailsJson = await client.CallToolAsync(
                     "silpo_get_product_details",
                     new Dictionary<string, object?>
@@ -59,12 +72,21 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
                     cancellationToken);
 
                 var category = NutrientCompletenessChecker.ExtractCategory(detailsJson);
-                totalByCategory[category] = totalByCategory.GetValueOrDefault(category) + 1;
+                var hasFullMacros = NutrientCompletenessChecker.HasFullMacros(detailsJson);
 
-                if (NutrientCompletenessChecker.HasFullMacros(detailsJson))
+                await categoryLock.WaitAsync(cancellationToken);
+                try
                 {
-                    fullMacroCount++;
-                    fullByCategory[category] = fullByCategory.GetValueOrDefault(category) + 1;
+                    totalByCategory[category] = totalByCategory.GetValueOrDefault(category) + 1;
+                    if (hasFullMacros)
+                    {
+                        fullMacroCount++;
+                        fullByCategory[category] = fullByCategory.GetValueOrDefault(category) + 1;
+                    }
+                }
+                finally
+                {
+                    categoryLock.Release();
                 }
             }
             catch (Exception)
@@ -74,16 +96,28 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
                 // 2026-09-14) - one bad product must not sink the whole coverage report, just
                 // like an unresolvable nutrient already skips that one candidate elsewhere.
             }
-        }
+            finally
+            {
+                throttle.Release();
+            }
+        });
 
+        await Task.WhenAll(tasks);
+
+        // fullMacroCount is read after every task above has completed, so no lock is needed here.
         var gaps = FindGaps(totalByCategory, fullByCategory);
         var medianWeeklyReceipt = ComputeMedianWeeklyReceipt(orderTotals);
 
         return new CoverageReport(productIds.Count, fullMacroCount, totalByCategory, gaps, medianWeeklyReceipt);
     }
 
-    private async Task<string?> ResolveSlugAsync(string productId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, string>> ResolveSlugsAsync(IReadOnlyCollection<string> productIds, CancellationToken cancellationToken)
     {
+        if (productIds.Count == 0)
+        {
+            return new Dictionary<string, string>();
+        }
+
         var batchJson = await client.CallToolAsync(
             "silpo_find_products_batch",
             new Dictionary<string, object?>
@@ -92,11 +126,11 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
                 ["deliveryType"] = session.DeliveryType,
                 ["timeslotStart"] = session.TimeslotStart,
                 ["timeslotEnd"] = session.TimeslotEnd,
-                ["products"] = new[] { productId },
+                ["products"] = productIds,
             },
             cancellationToken);
 
-        return JsonFieldScanner.ExtractProductSlugs(batchJson).GetValueOrDefault(productId);
+        return JsonFieldScanner.ExtractProductSlugs(batchJson);
     }
 
     private static List<string> FindGaps(Dictionary<string, int> totalByCategory, Dictionary<string, int> fullByCategory)

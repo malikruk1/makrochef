@@ -2,6 +2,8 @@ using MakroChef.Agent.Catalog;
 using MakroChef.Agent.Coverage;
 using MakroChef.Agent.Profiling;
 using MakroChef.Agent.Tracing;
+using MakroChef.Data;
+using MakroChef.Domain.Nutrition;
 using MakroChef.Domain.Solver;
 using MakroChef.Mcp;
 using MakroChef.Nutrition;
@@ -18,7 +20,7 @@ namespace MakroChef.Agent.Cart;
 /// silpo_get_categories_tree isn't wired yet (BLOCKERS.md) — a real deficit-driven category
 /// choice (e.g. "guest is low on protein and has no fish in history" → prioritize риба) is a
 /// documented gap, not invented here.</summary>
-public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver solver)
+public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver solver, MakroChefDbContext? db = null)
 {
     private static readonly string[] DeficitCategoryCandidates = ["сир", "риба", "яйця", "бобові", "горіхи", "молочні"];
 
@@ -34,7 +36,11 @@ public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver so
         var coverage = await new CoverageProbe(mcpClient, session).RunAsync(cancellationToken);
 
         var mode = coverage.CoveragePercent >= 60 ? NutritionResolverMode.Exact : NutritionResolverMode.CategoryIndex;
-        var nutritionResolver = NutritionResolverFactory.Create(mode, mcpClient, session);
+        INutritionResolver nutritionResolver = NutritionResolverFactory.Create(mode, mcpClient, session);
+        if (db is not null)
+        {
+            nutritionResolver = new CachingNutritionResolver(nutritionResolver, db);
+        }
 
         var seedProductIds = await CollectSeedProductIdsAsync(session, cancellationToken);
         var deficitCategories = DeficitCategoryCandidates
