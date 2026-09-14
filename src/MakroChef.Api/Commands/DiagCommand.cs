@@ -89,6 +89,21 @@ public static class DiagCommand
             ["timeslotEnd"] = session.TimeslotEnd,
         };
 
+        // CHECKPOINTS.md technical debt: CategoryResolver matches deficit keywords against
+        // silpo_get_categories' flat title list by substring, not the full get_categories_tree -
+        // dump both the real input schema and a live response to see if the tree actually offers
+        // something categories doesn't (parent/child structure, more precise slugs) before writing
+        // code against a schema nobody has ever confirmed live.
+        Console.WriteLine();
+        Console.WriteLine("=== input schema: silpo_get_categories_tree ===");
+        var treeTool = tools.FirstOrDefault(t => t.Name == "silpo_get_categories_tree");
+        Console.WriteLine(treeTool is not null ? treeTool.InputSchemaJson : "(tool not found in tools/list)");
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_categories_tree (raw, with session args) ===");
+        var categoriesTree = await client.CallToolAsync("silpo_get_categories_tree", sessionArgs);
+        Console.WriteLine(categoriesTree);
+
         Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_offline_orders (raw, with session args) ===");
         var offline = await client.CallToolAsync("silpo_get_my_offline_orders", sessionArgs);
