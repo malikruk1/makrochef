@@ -3,3 +3,12 @@ bin/
 obj/
 winget-upgrade.log
 docker-features-check.txt
+
+# Terraform (infra/) - state and anything with real secrets/account ids never committed
+infra/**/.terraform/
+infra/**/.terraform.lock.hcl
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/dev.tfvars
+infra/*.tfplan
+

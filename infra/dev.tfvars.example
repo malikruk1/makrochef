@@ -1,0 +1,20 @@
+# Copy to dev.tfvars (gitignored) and fill in the two secrets before `terraform apply`.
+aws_region   = "eu-central-1"
+aws_profile  = "<AWS_PROFILE>"
+project_name = "makrochef"
+environment  = "dev"
+
+db_deletion_protection = false
+db_skip_final_snapshot = true
+log_retention_days     = 7
+
+# Generate with: openssl rand -base64 32
+token_encryption_key = "<REPLACE_ME>"
+
+# Optional - leave empty to run on the deterministic fallback (no LLM explanations, fully functional).
+anthropic_api_key = ""
+
+# Leave null on the very first apply (the ECR module doesn't exist yet to build a URL from) - the
+# root main.tf falls back to "<ecr_repository_url>:latest". Set explicitly after you've pushed a
+# real image if you want to pin a specific tag instead of always redeploying whatever is :latest.
+# container_image = "123456789012.dkr.ecr.eu-central-1.amazonaws.com/makrochef-dev-api:latest"
