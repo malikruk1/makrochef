@@ -62,11 +62,16 @@ public static class StubTools
     [McpServerTool(Name = "silpo_get_my_profile"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyProfile() => """{"success":true,"profile":{"birthday":"1995-06-15"}}""";
 
+    // Real shape (confirmed live 2026-09-14): "members" (adult household members, self flagged
+    // "itsMe":true and excluded by GuestContextCollector) and a separate "children" array - not
+    // one flat "members" list with an "age" per entry.
     [McpServerTool(Name = "silpo_get_my_family"), Description("Stub fixture for gate 4.1.")]
-    public static string GetMyFamily() => """{"members":[{"age":8},{"age":40}]}""";
+    public static string GetMyFamily() => """{"members":[{"itsMe":true},{"age":40}],"children":[{"age":8}]}""";
 
+    // Real shape (confirmed live 2026-09-14): "restrictions" holds objects {"slug","name"}, not
+    // plain strings.
     [McpServerTool(Name = "silpo_get_my_food_restrictions"), Description("Stub fixture for gate 4.1.")]
-    public static string GetMyFoodRestrictions() => """{"restrictions":["риба","горіхи"]}""";
+    public static string GetMyFoodRestrictions() => """{"restrictions":[{"slug":"ryba","name":"риба"},{"slug":"horikhy","name":"горіхи"}]}""";
 
     [McpServerTool(Name = "silpo_get_my_delivery_addresses"), Description("Stub fixture for gate 4.1.")]
     public static string GetMyDeliveryAddresses() => """[{"city":"Київ","street":"Хрещатик"}]""";

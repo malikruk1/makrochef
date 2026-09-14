@@ -130,6 +130,18 @@ public static class DiagCommand
         // BLOCKERS.md B-6: POST /api/checkout crashed live with "'E' is an invalid start of a
         // value" right after silpo_get_my_certificates succeeded (per McpCalls log) - dump it raw
         // to see the actual shape/text CheckoutCascade's unguarded JsonDocument.Parse choked on.
+        // GuestContextCollector's family/restrictions field names were guessed and never
+        // confirmed live - same risk class as every other bug found this session.
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_family (raw) ===");
+        var family = await client.CallToolAsync("silpo_get_my_family", new Dictionary<string, object?>());
+        Console.WriteLine(family);
+
+        Console.WriteLine();
+        Console.WriteLine("=== silpo_get_my_food_restrictions (raw) ===");
+        var restrictions = await client.CallToolAsync("silpo_get_my_food_restrictions", new Dictionary<string, object?>());
+        Console.WriteLine(restrictions);
+
         Console.WriteLine();
         Console.WriteLine("=== silpo_get_my_premium_subscription (raw) ===");
         var premium = await client.CallToolAsync("silpo_get_my_premium_subscription", new Dictionary<string, object?>());

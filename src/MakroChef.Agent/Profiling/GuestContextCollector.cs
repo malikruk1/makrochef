@@ -23,7 +23,7 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
         return new GuestProfile(
             AgeYears: ExtractAge(profileJson),
             Family: ExtractFamily(familyJson),
-            Restrictions: ExtractStringArray(restrictionsJson, "restrictions"),
+            Restrictions: ExtractRestrictions(restrictionsJson),
             HasSavedAddress: ExtractHasAddresses(addressesJson),
             LoyaltyBonusBalance: ExtractLoyaltyBalance(loyaltyJson));
     }
@@ -59,49 +59,73 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
         return null;
     }
 
+    /// <summary>Confirmed live (2026-09-14): silpo_get_my_family wraps two SEPARATE arrays -
+    /// "members" (adult household members, each carrying no age at all, and including the guest
+    /// themselves flagged "itsMe":true) and "children" (kept separate precisely because the API
+    /// doesn't expect you to infer child-vs-adult from an age field). Previously assumed a single
+    /// flat "members" array with an "age" per entry - that shape doesn't exist; every real member
+    /// silently produced FamilyMember(null), and the guest was double-counted into household size
+    /// alongside the hardcoded "+1" in /api/profile.</summary>
     private static List<FamilyMember> ExtractFamily(string json)
     {
         var members = new List<FamilyMember>();
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var arrayElement = root.ValueKind == JsonValueKind.Array
-            ? root
-            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("members", out var m) && m.ValueKind == JsonValueKind.Array
-                ? m
-                : (JsonElement?)null;
-
-        if (arrayElement is null)
+        if (root.ValueKind != JsonValueKind.Object)
         {
             return members;
         }
 
-        foreach (var member in arrayElement.Value.EnumerateArray())
+        if (root.TryGetProperty("members", out var memberArray) && memberArray.ValueKind == JsonValueKind.Array)
         {
-            int? age = null;
-            foreach (var key in new[] { "age", "ageYears" })
+            foreach (var member in memberArray.EnumerateArray())
             {
-                if (member.TryGetProperty(key, out var ageValue) && ageValue.ValueKind == JsonValueKind.Number)
+                if (member.TryGetProperty("itsMe", out var itsMe) && itsMe.ValueKind == JsonValueKind.True)
                 {
-                    age = ageValue.GetInt32();
-                    break;
+                    continue; // the guest themselves - already counted as the "+1" household head
                 }
-            }
 
-            members.Add(new FamilyMember(age));
+                members.Add(new FamilyMember(ExtractMemberAge(member)));
+            }
+        }
+
+        if (root.TryGetProperty("children", out var childrenArray) && childrenArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in childrenArray.EnumerateArray())
+            {
+                members.Add(new FamilyMember(ExtractMemberAge(child), ForcedIsChild: true));
+            }
         }
 
         return members;
     }
 
-    private static List<string> ExtractStringArray(string json, string wrapperPropertyName)
+    private static int? ExtractMemberAge(JsonElement member)
+    {
+        foreach (var key in new[] { "age", "ageYears" })
+        {
+            if (member.TryGetProperty(key, out var ageValue) && ageValue.ValueKind == JsonValueKind.Number)
+            {
+                return ageValue.GetInt32();
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Confirmed live (2026-09-14): silpo_get_my_food_restrictions' "restrictions" array
+    /// holds OBJECTS (<c>{"slug":"...", "name": "..." | null}</c>), not plain strings as
+    /// originally guessed - every real restriction was silently dropped before (the string-only
+    /// filter matched nothing). Prefers "name" when set, falls back to "slug".</summary>
+    private static List<string> ExtractRestrictions(string json)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
         var arrayElement = root.ValueKind == JsonValueKind.Array
             ? root
-            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty(wrapperPropertyName, out var w) && w.ValueKind == JsonValueKind.Array
+            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("restrictions", out var w) && w.ValueKind == JsonValueKind.Array
                 ? w
                 : (JsonElement?)null;
 
@@ -110,10 +134,31 @@ public class GuestContextCollector(IMakroChefMcpClient mcpClient)
             return [];
         }
 
-        return arrayElement.Value.EnumerateArray()
-            .Where(e => e.ValueKind == JsonValueKind.String)
-            .Select(e => e.GetString()!)
-            .ToList();
+        var restrictions = new List<string>();
+        foreach (var element in arrayElement.Value.EnumerateArray())
+        {
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                restrictions.Add(element.GetString()!);
+                continue;
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (element.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+            {
+                restrictions.Add(name.GetString()!);
+            }
+            else if (element.TryGetProperty("slug", out var slug) && slug.ValueKind == JsonValueKind.String)
+            {
+                restrictions.Add(slug.GetString()!);
+            }
+        }
+
+        return restrictions;
     }
 
     private static bool ExtractHasAddresses(string json)
