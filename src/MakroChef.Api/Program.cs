@@ -260,8 +260,11 @@ app.MapGet("/api/basket", async (MakroChefDbContext db, BasketSolver solver) =>
         relaxed = plan.Solver.Relaxed,
         candidatePoolSize = plan.CandidatePoolSize,
         coveragePercent = plan.Coverage.CoveragePercent,
-        targetProteinGrams = plan.Norms.ProteinTargetGrams,
-        maxSugarGrams = plan.Norms.MaxSugarGrams,
+        // TargetNorms are per-day (TargetNormsCalculator); this basket is a whole week's worth,
+        // same as totalProteinGrams/totalSugarGrams above - ×7 so the UI's "X / Y" pairing
+        // compares like with like instead of a weekly total against a daily target.
+        targetProteinGrams = plan.Norms.ProteinTargetGrams * 7,
+        maxSugarGrams = plan.Norms.MaxSugarGrams * 7,
         normSource = plan.Norms.Source,
     });
 });
