@@ -1,11 +1,27 @@
 const SCREENS = ["1", "2", "3", "4", "5", "6", "7"];
 const TRACE_SESSION_ID = "00000000-0000-0000-0000-000000000001"; // matches API's DEV_USER_ID default
 const STATES = ["data", "live", "empty", "loading", "error"];
+
+// The screen-jump tabs and data-state switcher are QA-only controls (TASKS.md 8.2 gate: all
+// screens/states must be reachable without a live account) - not part of the real guest-facing
+// app, which only ever shows one live screen at a time via its own forward buttons. Hidden unless
+// ?dev is in the URL, so a guest opening the plain link gets a clean phone-width experience.
+const isDevMode = new URLSearchParams(location.search).has("dev");
 let currentScreen = "1";
-let currentState = "data";
+let currentState = isDevMode ? "data" : "live";
 
 function renderNav() {
   const nav = document.getElementById("devNav");
+  const stateSwitch = document.getElementById("devStateSwitch");
+
+  if (!isDevMode) {
+    nav.hidden = true;
+    stateSwitch.hidden = true;
+    return;
+  }
+
+  nav.hidden = false;
+  stateSwitch.hidden = false;
   nav.innerHTML = "";
   for (const id of SCREENS) {
     const el = document.getElementById(`screen-${id}`);
@@ -16,7 +32,6 @@ function renderNav() {
     nav.appendChild(btn);
   }
 
-  const stateSwitch = document.getElementById("devStateSwitch");
   stateSwitch.innerHTML = "";
   for (const state of STATES) {
     const btn = document.createElement("button");
@@ -35,7 +50,10 @@ function render() {
   }
 
   const el = document.getElementById(`screen-${currentScreen}`);
-  if (currentState === "live") {
+  if (currentScreen === "1") {
+    // Static welcome/connect screen - no API call involved, so it renders the same in every state.
+    el.innerHTML = renderScreens["1"]();
+  } else if (currentState === "live") {
     el.innerHTML = renderLoading();
     renderLive(currentScreen).then(html => { el.innerHTML = html; }).catch(() => { el.innerHTML = renderError(); });
   } else if (currentState === "empty") {
