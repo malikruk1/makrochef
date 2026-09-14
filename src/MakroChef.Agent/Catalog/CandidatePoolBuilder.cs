@@ -81,18 +81,30 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
             }
         }
 
-        var candidates = new List<Candidate>();
-        foreach (var (productId, slug) in slugsById)
-        {
-            var categoryHint = categoryHintById.GetValueOrDefault(productId);
-            var candidate = await ResolveCandidateAsync(productId, slug, categoryHint, request.RestrictedCategories, cancellationToken);
-            if (candidate is not null)
-            {
-                candidates.Add(candidate);
-            }
-        }
+        // Confirmed live (2026-09-14): resolving ~178 real candidates one at a time (each its own
+        // get_product_details + nutrition-resolver round trip to MCP) took 90-100s end to end -
+        // almost entirely network wait, not CPU. Bounded concurrency brings that down without
+        // hammering the real MCP server the way unlimited parallelism would.
+        const int maxConcurrency = 12;
+        using var throttle = new SemaphoreSlim(maxConcurrency);
 
-        return candidates;
+        var tasks = slugsById.Select(async pair =>
+        {
+            var (productId, slug) = pair;
+            await throttle.WaitAsync(cancellationToken);
+            try
+            {
+                var categoryHint = categoryHintById.GetValueOrDefault(productId);
+                return await ResolveCandidateAsync(productId, slug, categoryHint, request.RestrictedCategories, cancellationToken);
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        });
+
+        var resolved = await Task.WhenAll(tasks);
+        return resolved.Where(c => c is not null).Select(c => c!).ToList();
     }
 
     private static void MergeSlugs(Dictionary<string, string> slugsById, string json)
