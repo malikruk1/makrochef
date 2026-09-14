@@ -1,0 +1,5 @@
+# Copy to dev.tfvars (gitignored). origin_domain_name comes from the main stack:
+# cd ../.. && terraform output -raw alb_dns_name
+aws_profile = "<AWS_PROFILE>"
+
+origin_domain_name = "<paste alb_dns_name from the main infra/ stack here>"

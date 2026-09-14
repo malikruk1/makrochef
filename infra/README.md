@@ -38,7 +38,39 @@ infra/
     database/                RDS Postgres + connection-string SSM parameter
     ecr/                     Image repository
     ecs/                     Cluster, task definition, service, ALB, IAM, logs
+  edge/                     Separate stack - CloudFront in front of the ALB (see below)
 ```
+
+## `infra/edge/` — CloudFront, as its own stack
+
+A second, independent Terraform stack (own state file, same S3 bucket, different key) that puts a
+CloudFront distribution in front of whatever origin you point it at - the main stack's ALB today, a
+Lambda Function URL later if the compute layer ever changes. Kept separate from the main stack
+on purpose: a `terraform destroy`/recreate of ALB/ECS/RDS - or swapping the origin entirely - never
+changes the public CloudFront domain, so the demo link stays stable across backend changes. The two
+stacks are coupled only through `origin_domain_name`, passed in explicitly rather than read via a
+`terraform_remote_state` data source, so `edge`'s plan never depends on the main stack's state
+existing.
+
+```bash
+cd infra/edge
+cp dev.tfvars.example dev.tfvars
+# origin_domain_name: paste the main stack's `terraform output -raw alb_dns_name` (run from infra/)
+terraform init -backend-config=backend.dev.hcl
+terraform plan  -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
+```
+
+Requires Terraform >= 1.10 (the main stack only needs >= 1.6). Custom origin over HTTP
+(`origin_protocol_policy = "http-only"`, matching the ALB's HTTP-only listener today) with a
+60-second `origin_read_timeout` - the highest CloudFront allows without a support-ticket quota
+increase, needed because real MCP round trips (`CandidatePoolBuilder`/`CoverageProbe`) routinely
+take up to ~40s and the default 30s would cut those responses off mid-request. Uses the AWS managed
+`Managed-CachingDisabled` + `Managed-AllViewerExceptHostHeader` policies (this is a dynamic API, not
+static content - CloudFront here is a TLS-terminating/global-edge front door, not a cache) and the
+default `*.cloudfront.net` certificate, so no ACM/Route53 setup is needed for HTTPS.
+
+Output `app_url` is the link to hand out - `https://<distribution>.cloudfront.net/web/app/index.html`.
 
 ## One-time: bootstrap remote state
 
