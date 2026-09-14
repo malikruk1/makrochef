@@ -170,9 +170,9 @@ async function renderLiveBasket() {
   }
 
   const lines = b.lines.map(l => `
-    <div class="swap-row">
-      <div class="swap-old">${l.name || l.productId}</div>
-      <div class="swap-new">× ${l.units}</div>
+    <div class="basket-line">
+      <div class="basket-line-name">${l.name || l.productId}</div>
+      <div class="basket-line-qty">× ${l.units}</div>
     </div>`).join("");
   const relaxedLine = b.relaxed.length > 0
     ? `<p style="font-size:11px;color:var(--text-muted)">Послаблено, щоб знайти рішення: ${b.relaxed.join("; ")}</p>`
@@ -314,7 +314,10 @@ async function applyBasketAndProceed() {
     return;
   }
 
-  currentScreen = "5";
+  // TASKS.md 7.2, the key pitch: if the real cart came back with out-of-stock items, show the full
+  // reoptimization (not a silent 1-for-1 substitution) instead of jumping straight to checkout.
+  const hasOutOfStock = (result.body?.validations ?? []).some(v => v.isOutOfStock);
+  currentScreen = hasOutOfStock ? "4" : "5";
   currentState = "live";
   render();
 }
@@ -345,9 +348,9 @@ async function renderLiveReoptimization() {
     ${notesLine}
     <div class="section-title">Новий кошик</div>
     <div class="compare-card">${r.lines.map(l => `
-      <div class="swap-row">
-        <div class="swap-old">${l.name || l.productId}</div>
-        <div class="swap-new">× ${l.quantity}</div>
+      <div class="basket-line">
+        <div class="basket-line-name">${l.name || l.productId}</div>
+        <div class="basket-line-qty">× ${l.quantity}</div>
       </div>`).join("")}</div>
     <p style="font-size:12px;color:var(--text-muted)">До сплати: ${r.totalAfterDiscounts.toFixed(2)} ₴</p>
     <div class="bottom-bar">

@@ -86,6 +86,12 @@ h1.app-title { font-size: 15px; font-weight: 500; margin: 0 0 16px; }
 .swap-gain { font-size: 11px; color: var(--success); margin-top: 2px; }
 .swap-gain.compromise { color: var(--text-compare); }
 
+/* ---- plain basket line (NOT a swap - no strikethrough, that's only for old->new rows) ---- */
+.basket-line { padding: 10px 0; border-bottom: 1px solid var(--border-card); display: flex; justify-content: space-between; align-items: center; }
+.basket-line:last-child { border-bottom: none; }
+.basket-line .basket-line-name { font-size: 13px; color: var(--text); }
+.basket-line .basket-line-qty { font-weight: 500; font-size: 13px; color: var(--text-2); white-space: nowrap; margin-left: 8px; }
+
 /* ---- reoptimization banner ---- */
 .banner {
   background: var(--accent-plate);
