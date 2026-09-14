@@ -168,12 +168,17 @@ public static class JsonFieldScanner
                     continue;
                 }
 
+                // Confirmed live (2026-09-14): real order quantities can be fractional for
+                // weighed goods (e.g. "quantity":0.466 for bananas by kg) - GetInt32() throws
+                // FormatException on those. Read as decimal and round, with a floor of 1 so a
+                // weighed item still contributes ~one unit-equivalent instead of silently
+                // zeroing out (consistent with this analyzer's documented ~100g approximation).
                 var quantity = 1;
                 foreach (var key in new[] { "quantity", "qty", "count" })
                 {
                     if (item.TryGetProperty(key, out var qtyValue) && qtyValue.ValueKind == JsonValueKind.Number)
                     {
-                        quantity = qtyValue.GetInt32();
+                        quantity = Math.Max(1, (int)Math.Round(qtyValue.GetDecimal()));
                         break;
                     }
                 }
