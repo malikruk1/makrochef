@@ -99,6 +99,11 @@ async function renderLive(screenId) {
       <div class="label">Обмеження</div>
       <div class="value" style="font-size:14px">${restrictionsLine}</div>
     </div>
+    <div class="compare-card" id="restriction-input">
+      <input type="text" id="restriction-text" placeholder="напр. «без риби»" style="width:100%;font-size:12px;padding:8px;border:1px solid var(--border-card);border-radius:var(--r-btn);margin-bottom:8px" />
+      <button class="btn btn-secondary" style="width:100%" onclick="submitRestriction()">Додати обмеження</button>
+      <div id="restriction-result" style="font-size:11px;color:var(--text-muted);margin-top:6px"></div>
+    </div>
     <div class="metric-card">
       <div class="label">Балабонуси</div>
       <div class="value">${p.loyaltyBonus}</div>
@@ -190,6 +195,38 @@ async function renderLiveBasket() {
       <button class="btn btn-primary" style="width:100%" onclick="applyBasketAndProceed()">До оформлення</button>
     </div>
   `;
+}
+
+// TASKS.md 0.2: translates free text ("без риби") into structured restriction categories via LLM
+// (with a deterministic keyword fallback), then merges them into the guest's profile - additive
+// only, since MCP itself has no tool to remove a restriction.
+async function submitRestriction() {
+  const input = document.getElementById("restriction-text");
+  const result = document.getElementById("restriction-result");
+  const text = input.value.trim();
+  if (!text) return;
+
+  result.textContent = "Обробляю...";
+  try {
+    const res = await fetch("/api/profile/restrictions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const problem = await res.json().catch(() => null);
+      throw new Error(problem?.detail ?? "request failed");
+    }
+    const r = await res.json();
+    if (r.addedRestrictions.length === 0) {
+      result.textContent = "Не розпізнано жодного обмеження в тексті.";
+    } else {
+      result.textContent = `Додано: ${r.addedRestrictions.join(", ")}${r.llmConfigured ? "" : " (за ключовими словами, ANTHROPIC_API_KEY не задано)"}`;
+      input.value = "";
+    }
+  } catch {
+    result.textContent = "Не вдалося обробити текст.";
+  }
 }
 
 async function loadRealSwaps() {

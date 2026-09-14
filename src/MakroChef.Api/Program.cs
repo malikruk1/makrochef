@@ -134,11 +134,20 @@ app.MapGet("/api/profile", async (MakroChefDbContext db) =>
     // "estimate" tier rather than faking a measured number.
     var norms = new TargetNormsCalculator().Compute(profile, medianDailyKcal: null);
 
+    // TASKS.md 0.2: restrictions the guest added via free text ("без риби") on top of whatever
+    // MCP itself reports - additive only, MCP has no tool to remove a restriction either.
+    var overrides = await db.RestrictionOverrides
+        .Where(r => r.UserId == devUserId)
+        .Select(r => r.Restriction)
+        .Distinct()
+        .ToListAsync();
+    var allRestrictions = profile.Restrictions.Union(overrides, StringComparer.OrdinalIgnoreCase).ToList();
+
     return Results.Ok(new
     {
         ageYears = profile.AgeYears,
         familySize = 1 + profile.Family.Count,
-        restrictions = profile.Restrictions,
+        restrictions = allRestrictions,
         hasSavedAddress = profile.HasSavedAddress,
         loyaltyBonus = profile.LoyaltyBonusBalance,
         targetProteinGrams = norms.ProteinTargetGrams,
@@ -146,6 +155,46 @@ app.MapGet("/api/profile", async (MakroChefDbContext db) =>
         kcalMin = norms.KcalMin,
         kcalMax = norms.KcalMax,
         normSource = norms.Source,
+    });
+});
+
+app.MapPost("/api/profile/restrictions", async (RestrictionRequest request, MakroChefDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Text))
+    {
+        return Results.Problem("Порожній текст.", statusCode: 400);
+    }
+
+    var devUserId = Guid.Parse(Environment.GetEnvironmentVariable("DEV_USER_ID") ?? "00000000-0000-0000-0000-000000000001");
+    var anthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+    var llmClient = new AnthropicClient(sharedHttpClient, anthropicApiKey);
+    var translated = await new RestrictionTranslator(llmClient).TranslateAsync(request.Text);
+
+    var existing = await db.RestrictionOverrides
+        .Where(r => r.UserId == devUserId)
+        .Select(r => r.Restriction)
+        .ToListAsync();
+    var newOnes = translated.Where(r => !existing.Contains(r, StringComparer.OrdinalIgnoreCase)).ToList();
+
+    foreach (var restriction in newOnes)
+    {
+        db.RestrictionOverrides.Add(new MakroChef.Domain.Entities.RestrictionOverride
+        {
+            Id = Guid.NewGuid(),
+            UserId = devUserId,
+            Restriction = restriction,
+            SourceText = request.Text,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+    }
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new
+    {
+        llmConfigured = !string.IsNullOrWhiteSpace(anthropicApiKey),
+        addedRestrictions = newOnes,
+        allRestrictions = existing.Union(newOnes, StringComparer.OrdinalIgnoreCase).ToList(),
     });
 });
 
@@ -641,3 +690,7 @@ public record ApplyBasketRequest(bool ConfirmClear = false);
 /// ніколи не застосовувати мовчки") - the guest confirms, then the Mini App calls again with
 /// applyBonus:true to actually spend them.</summary>
 public record CheckoutRequest(bool ApplyBonus = false);
+
+/// <summary>Body of POST /api/profile/restrictions. Free text like "без риби" (TASKS.md 0.2's
+/// third LLM job), translated into structured restriction categories server-side.</summary>
+public record RestrictionRequest(string Text);

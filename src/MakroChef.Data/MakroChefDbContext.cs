@@ -10,6 +10,7 @@ public class MakroChefDbContext(DbContextOptions<MakroChefDbContext> options) : 
     public DbSet<ProductNutrition> ProductNutritions => Set<ProductNutrition>();
     public DbSet<ReceiptSnapshot> ReceiptSnapshots => Set<ReceiptSnapshot>();
     public DbSet<McpCall> McpCalls => Set<McpCall>();
+    public DbSet<RestrictionOverride> RestrictionOverrides => Set<RestrictionOverride>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +37,11 @@ public class MakroChefDbContext(DbContextOptions<MakroChefDbContext> options) : 
         modelBuilder.Entity<McpCall>(e =>
         {
             e.HasIndex(c => c.CreatedAt);
+        });
+
+        modelBuilder.Entity<RestrictionOverride>(e =>
+        {
+            e.HasIndex(r => r.UserId);
         });
     }
 }
