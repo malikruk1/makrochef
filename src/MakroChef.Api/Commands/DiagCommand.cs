@@ -41,7 +41,7 @@ public static class DiagCommand
         // shape/argument names (not just prose description) can be confirmed.
         Console.WriteLine();
         Console.WriteLine("=== input schemas: silpo_remove_cart_products / silpo_add_or_update_cart_products / silpo_update_shopping_cart / silpo_add_or_update_certificates ===");
-        foreach (var tool in tools.Where(t => t.Name is "silpo_remove_cart_products" or "silpo_add_or_update_cart_products" or "silpo_update_shopping_cart" or "silpo_add_or_update_certificates"))
+        foreach (var tool in tools.Where(t => t.Name is "silpo_remove_cart_products" or "silpo_add_or_update_cart_products" or "silpo_update_shopping_cart" or "silpo_add_or_update_certificates" or "silpo_get_similar_products" or "silpo_get_replacements"))
         {
             Console.WriteLine($"--- {tool.Name} ---");
             Console.WriteLine(tool.InputSchemaJson);
@@ -185,6 +185,38 @@ public static class DiagCommand
         {
             var online = await client.CallToolAsync("silpo_get_my_online_orders", sessionArgs);
             Console.WriteLine(online);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
+        // SwapGenerator/ReoptimizationService rely on JsonFieldScanner.ExtractProductSlugs (which
+        // is shape-agnostic) here, so this is a lower-risk check than the others - but every
+        // other "obviously fine" assumption this session turned out wrong at least once, so worth
+        // one real confirmation.
+        Console.WriteLine();
+        Console.WriteLine($"=== silpo_get_similar_products (raw, real slug={slug}) ===");
+        try
+        {
+            var similar = await client.CallToolAsync(
+                "silpo_get_similar_products",
+                new Dictionary<string, object?>(sessionArgs) { ["productId"] = sampleProductId });
+            Console.WriteLine(similar);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: {ex.Message}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"=== silpo_get_replacements (raw, real productId={sampleProductId}) ===");
+        try
+        {
+            var replacements = await client.CallToolAsync(
+                "silpo_get_replacements",
+                new Dictionary<string, object?>(sessionArgs) { ["productId"] = sampleProductId });
+            Console.WriteLine(replacements);
         }
         catch (Exception ex)
         {

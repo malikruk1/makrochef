@@ -18,7 +18,13 @@ namespace MakroChef.Agent.Cart;
 ///
 /// Confirmed live (2026-09-14): get_product_details needs a slug + branchId/deliveryType/
 /// timeslot (SessionContext), not a bare productId - get_replacements results carry both id and
-/// slug together, same as every other catalog tool.</summary>
+/// slug together, same as every other catalog tool.
+///
+/// Confirmed live (2026-09-14) via the tool's real input schema: silpo_get_replacements takes
+/// "productIds" (a plural ARRAY, not a single "productId") plus a required "companyId" - the
+/// previous per-product call with a singular "productId" always failed MCP input validation, so
+/// no replacement was ever actually found for an out-of-stock item. companyId comes from the
+/// out-of-stock line's own entry in the cart (each real cart line carries one).</summary>
 public class ReoptimizationService(
     IMakroChefMcpClient mcpClient,
     INutritionResolver nutritionResolver,
@@ -46,18 +52,38 @@ public class ReoptimizationService(
             foreach (var problemProductId in problemProductIds)
             {
                 candidates.RemoveAll(c => c.ProductId == problemProductId);
+            }
 
-                var replacementsJson = await mcpClient.CallToolAsync(
-                    "silpo_get_replacements",
-                    new Dictionary<string, object?>
-                    {
-                        ["productId"] = problemProductId,
-                        ["branchId"] = session.BranchId,
-                        ["deliveryType"] = session.DeliveryType,
-                        ["timeslotStart"] = session.TimeslotStart,
-                        ["timeslotEnd"] = session.TimeslotEnd,
-                    },
-                    cancellationToken);
+            // silpo_get_replacements takes the whole batch of out-of-stock ids in one call
+            // (productIds is an array) plus a single companyId - resolved from whichever
+            // problem line still carries one in the cart we just read.
+            var companyId = cart.Lines
+                .Where(l => problemProductIds.Contains(l.ProductId))
+                .Select(l => l.CompanyId)
+                .FirstOrDefault(c => c is not null);
+
+            if (companyId is not null)
+            {
+                string replacementsJson;
+                try
+                {
+                    replacementsJson = await mcpClient.CallToolAsync(
+                        "silpo_get_replacements",
+                        new Dictionary<string, object?>
+                        {
+                            ["productIds"] = problemProductIds,
+                            ["companyId"] = companyId,
+                            ["branchId"] = session.BranchId,
+                            ["deliveryType"] = session.DeliveryType,
+                        },
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    // Confirmed live: a plain-text MCP error here must not sink the whole
+                    // reoptimization - just fall through with whatever candidates remain.
+                    replacementsJson = "[]";
+                }
 
                 foreach (var (replacementId, replacementSlug) in JsonFieldScanner.ExtractProductSlugs(replacementsJson))
                 {

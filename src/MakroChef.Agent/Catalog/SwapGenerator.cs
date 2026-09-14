@@ -13,7 +13,11 @@ namespace MakroChef.Agent.Catalog;
 ///
 /// Confirmed live (2026-09-14): get_product_details needs a slug + branchId/deliveryType/
 /// timeslot, not a bare productId - the guest's "usual" product needs its slug resolved via
-/// find_products_batch first (its id alone, e.g. from receipt history, isn't enough).</summary>
+/// find_products_batch first (its id alone, e.g. from receipt history, isn't enough).
+///
+/// Confirmed live (2026-09-14) via the tool's real input schema: silpo_get_similar_products
+/// requires "slug" (not "productId") alongside branchId/deliveryType/timeslot - the previous call
+/// always failed MCP input validation, so no swap was ever actually surfaced.</summary>
 public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver, SessionContext session)
 {
     public async Task<IReadOnlyList<ProductSwap>> GenerateAsync(IReadOnlyList<string> usualCartProductIds, CancellationToken cancellationToken = default)
@@ -50,17 +54,27 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
                 continue;
             }
 
-            var similarJson = await mcpClient.CallToolAsync(
-                "silpo_get_similar_products",
-                new Dictionary<string, object?>
-                {
-                    ["productId"] = productId,
-                    ["branchId"] = session.BranchId,
-                    ["deliveryType"] = session.DeliveryType,
-                    ["timeslotStart"] = session.TimeslotStart,
-                    ["timeslotEnd"] = session.TimeslotEnd,
-                },
-                cancellationToken);
+            string similarJson;
+            try
+            {
+                similarJson = await mcpClient.CallToolAsync(
+                    "silpo_get_similar_products",
+                    new Dictionary<string, object?>
+                    {
+                        ["slug"] = oldSlug,
+                        ["branchId"] = session.BranchId,
+                        ["deliveryType"] = session.DeliveryType,
+                        ["timeslotStart"] = session.TimeslotStart,
+                        ["timeslotEnd"] = session.TimeslotEnd,
+                    },
+                    cancellationToken);
+            }
+            catch (Exception)
+            {
+                // Same tolerance as elsewhere - one product's similar-products lookup failing
+                // must not sink swap suggestions for the rest of the basket.
+                continue;
+            }
 
             foreach (var (candidateId, candidateSlug) in JsonFieldScanner.ExtractProductSlugs(similarJson))
             {

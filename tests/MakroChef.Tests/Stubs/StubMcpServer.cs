@@ -112,10 +112,15 @@ public static class StubTools
         """{"success":true,"categories":[{"title":"сир","slug":"сир"},{"title":"риба","slug":"риба"},{"title":"яйця","slug":"яйця"}]}""";
 
     [McpServerTool(Name = "silpo_get_similar_products"), Description("Stub fixture for gate 6.2.")]
-    public static string GetSimilarProducts(string productId) => CatalogFixture.SimilarProducts(productId);
+    // Real param is "slug" (confirmed via input schema, 2026-09-14), not "productId" - every
+    // stub fixture uses slug == productId so this stays a drop-in rename.
+    public static string GetSimilarProducts(string slug) => CatalogFixture.SimilarProducts(slug);
 
     [McpServerTool(Name = "silpo_get_replacements"), Description("Stub fixture for gate 7.2.")]
-    public static string GetReplacements(string productId) => productId switch
+    // Real params are "productIds" (array) + required "companyId" (confirmed via input schema,
+    // 2026-09-14), not a single "productId" - the stub takes the first id in the batch since
+    // existing tests only ever ask about one out-of-stock product at a time.
+    public static string GetReplacements(string[] productIds, string? companyId = null) => productIds.FirstOrDefault() switch
     {
         "test_cheese" => """[{"productId":"cheese_b","slug":"cheese_b"}]""",
         _ => "[]",
@@ -159,7 +164,7 @@ public static class StubTools
     [McpServerTool(Name = "silpo_get_shopping_cart_by_id"), Description("Stub cart for gate 7.")]
     public static string GetShoppingCartById()
     {
-        var products = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}}}""");
+        var products = StubCartState.Lines.Select(kv => $$"""{"productId":"{{kv.Key}}","quantity":{{kv.Value}},"companyId":"stub-company-1"}""");
         var validations = StubCartState.Lines.Keys
             .Where(id => StubCartState.OutOfStock.Contains(id))
             .Select(id => "{\"message\":\"product.offer.status.not_available\",\"context\":{\"productId\":\"" + id + "\"}}");
