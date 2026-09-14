@@ -116,7 +116,16 @@ async function renderLive(screenId) {
       Джерело норми: ${p.normSource}. "Спожито" ще не порахований — потребує slug-резолюції
       товарів з чеків (відкрите питання, див. BLOCKERS.md).
     </p>
+    <div class="bottom-bar">
+      <button class="btn btn-primary" style="width:100%" onclick="goToLiveScreen('3')">До кошика</button>
+    </div>
   `;
+}
+
+function goToLiveScreen(screenId) {
+  currentScreen = screenId;
+  currentState = "live";
+  render();
 }
 
 async function renderLiveBasket() {
@@ -294,6 +303,9 @@ async function renderLiveCheckout(applyBonus) {
     ${bonusSection}
     ${validationsSection}
     <p style="font-size:12px;color:var(--text-muted);margin-top:12px">Наступного тижня перевіримо, чи скоротився дефіцит.</p>
+    <div class="bottom-bar">
+      <button class="btn btn-secondary" style="width:100%" onclick="goToLiveScreen('6')">Тиждень до тижня</button>
+    </div>
   `;
 }
 
@@ -370,7 +382,7 @@ const renderScreens = {
       без ручного вводу їжі.
     </p>
     <div style="margin-top:24px">
-      <button class="btn btn-primary" style="width:100%">Підключити Сільпо</button>
+      <button class="btn btn-primary" style="width:100%" onclick="goToLiveScreen('2')">Підключити Сільпо</button>
     </div>
     <p style="font-size:11px;color:var(--text-muted);margin-top:12px">Читаємо офлайн- і онлайн-чеки за останні 3 місяці.</p>
   `,
