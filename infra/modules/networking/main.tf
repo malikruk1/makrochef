@@ -94,7 +94,7 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_security_group" "rds" {
   name        = "${var.name_prefix}-rds"
-  description = "Allow inbound Postgres only from the ECS task's security group"
+  description = "Allow inbound Postgres only from the ECS task security group"
   vpc_id      = aws_vpc.this.id
 
   ingress {

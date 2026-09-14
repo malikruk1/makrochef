@@ -10,5 +10,6 @@ infra/**/.terraform.lock.hcl
 infra/**/*.tfstate
 infra/**/*.tfstate.*
 infra/dev.tfvars
+infra/edge/dev.tfvars
 infra/*.tfplan
 

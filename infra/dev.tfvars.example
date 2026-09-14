@@ -1,6 +1,6 @@
 # Copy to dev.tfvars (gitignored) and fill in the two secrets before `terraform apply`.
 aws_region   = "eu-central-1"
-aws_profile  = "<AWS_PROFILE>"
+aws_profile  = "krok-dev"
 project_name = "makrochef"
 environment  = "dev"
 
