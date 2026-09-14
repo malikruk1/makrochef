@@ -627,11 +627,15 @@ app.MapGet("/api/basket/swaps", async (MakroChefDbContext db) =>
         };
         var offlineJson = await mcpClient.CallToolAsync("silpo_get_my_offline_orders", sessionArgs);
         var onlineJson = await mcpClient.CallToolAsync("silpo_get_my_online_orders", sessionArgs);
-        var usualProductIds = new HashSet<string>();
-        usualProductIds.UnionWith(JsonFieldScanner.ExtractProductIds(offlineJson));
-        usualProductIds.UnionWith(JsonFieldScanner.ExtractProductIds(onlineJson));
+        // Confirmed live (2026-09-14): the slug already lives in the order JSON itself
+        // (catalogProduct.slug per line item) - no MCP lookup needed to get it (BLOCKERS.md).
+        var usualSlugsById = new Dictionary<string, string>(JsonFieldScanner.ExtractProductSlugs(offlineJson));
+        foreach (var (id, slug) in JsonFieldScanner.ExtractProductSlugs(onlineJson))
+        {
+            usualSlugsById.TryAdd(id, slug);
+        }
 
-        swaps = await new SwapGenerator(mcpClient, nutritionResolver, session).GenerateAsync(usualProductIds.ToList());
+        swaps = await new SwapGenerator(mcpClient, nutritionResolver, session).GenerateAsync(usualSlugsById);
     }
     catch (Exception ex)
     {

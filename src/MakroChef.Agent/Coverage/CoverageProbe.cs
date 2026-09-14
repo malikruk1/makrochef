@@ -10,8 +10,12 @@ namespace MakroChef.Agent.Coverage;
 ///
 /// Confirmed live (2026-09-14): silpo_get_my_offline_orders also requires branchId/deliveryType/
 /// timeslotStart/timeslotEnd (SessionBootstrap), same as every catalog tool, and
-/// get_product_details needs a slug — order history only carries bare ids, so each id's slug is
-/// resolved via silpo_find_products_batch first (JsonFieldScanner.ExtractProductSlugs).</summary>
+/// get_product_details needs a slug. **Correction, same day**: silpo_find_products_batch's
+/// "products" parameter is a TEXT SEARCH (its own tool description: "semicolon-separated" search
+/// terms), not an id lookup - passing raw ids there always returned zero matches (BLOCKERS.md).
+/// The slug was never missing: silpo_get_my_offline_orders/silpo_get_my_online_orders already
+/// nest it in each line item's own catalogProduct.slug, which JsonFieldScanner.ExtractProductSlugs
+/// picks up directly - no MCP call needed for this at all.</summary>
 public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
 {
     private static readonly string[] KnownGapCategories = ["ваговий", "власне виробництво", "фреш"];
@@ -37,11 +41,16 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
         orderTotals.AddRange(JsonFieldScanner.ExtractOrderTotals(offlineOrdersJson));
         orderTotals.AddRange(JsonFieldScanner.ExtractOrderTotals(onlineOrdersJson));
 
-        // Confirmed live (2026-09-14): resolving slugs one product at a time - each its own
-        // silpo_find_products_batch call - was pure waste, since that tool already accepts the
-        // whole list at once (CandidatePoolBuilder does this correctly for seed products). One
-        // batched call replaces what used to be up to ~90 sequential single-item calls.
-        var slugsById = await ResolveSlugsAsync(productIds, cancellationToken);
+        // Slugs already live in the order JSON itself (catalogProduct.slug per line item) - no
+        // MCP call needed to resolve them (see class doc for why the old find_products_batch
+        // approach never actually worked).
+        var slugsById = JsonFieldScanner.ExtractProductSlugs(offlineOrdersJson);
+        if (JsonFieldScanner.ExtractProductSlugs(onlineOrdersJson) is { Count: > 0 } onlineSlugs)
+        {
+            slugsById = slugsById.Concat(onlineSlugs)
+                .GroupBy(kv => kv.Key)
+                .ToDictionary(g => g.Key, g => g.First().Value);
+        }
 
         var fullMacroCount = 0;
         var totalByCategory = new Dictionary<string, int>();
@@ -109,28 +118,6 @@ public class CoverageProbe(IMakroChefMcpClient client, SessionContext session)
         var medianWeeklyReceipt = ComputeMedianWeeklyReceipt(orderTotals);
 
         return new CoverageReport(productIds.Count, fullMacroCount, totalByCategory, gaps, medianWeeklyReceipt);
-    }
-
-    private async Task<IReadOnlyDictionary<string, string>> ResolveSlugsAsync(IReadOnlyCollection<string> productIds, CancellationToken cancellationToken)
-    {
-        if (productIds.Count == 0)
-        {
-            return new Dictionary<string, string>();
-        }
-
-        var batchJson = await client.CallToolAsync(
-            "silpo_find_products_batch",
-            new Dictionary<string, object?>
-            {
-                ["branchId"] = session.BranchId,
-                ["deliveryType"] = session.DeliveryType,
-                ["timeslotStart"] = session.TimeslotStart,
-                ["timeslotEnd"] = session.TimeslotEnd,
-                ["products"] = productIds,
-            },
-            cancellationToken);
-
-        return JsonFieldScanner.ExtractProductSlugs(batchJson);
     }
 
     private static List<string> FindGaps(Dictionary<string, int> totalByCategory, Dictionary<string, int> fullByCategory)

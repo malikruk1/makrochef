@@ -23,9 +23,19 @@ public class SwapGeneratorTests
         await using var mcpClient = new MakroChefMcpClient(stubServer.Endpoint, new NullMcpAuthTokenProvider(), recorder);
         var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
-        var usualCart = new[] { "yogurt_x", "bread_x", "milk_x", "juice_x", "cereal_x" };
+        // Slugs equal ids in this stub fixture - real callers now resolve these directly from
+        // order history JSON (catalogProduct.slug) instead of a broken find_products_batch lookup
+        // by id (BLOCKERS.md), so SwapGenerator takes the map straight from its caller.
+        var usualCartSlugsById = new Dictionary<string, string>
+        {
+            ["yogurt_x"] = "yogurt_x",
+            ["bread_x"] = "bread_x",
+            ["milk_x"] = "milk_x",
+            ["juice_x"] = "juice_x",
+            ["cereal_x"] = "cereal_x",
+        };
 
-        var swaps = await new SwapGenerator(mcpClient, resolver, StubSession.Default).GenerateAsync(usualCart);
+        var swaps = await new SwapGenerator(mcpClient, resolver, StubSession.Default).GenerateAsync(usualCartSlugsById);
 
         Assert.True(swaps.Count >= 5, $"Expected >=5 swaps, got {swaps.Count}");
 

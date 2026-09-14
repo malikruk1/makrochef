@@ -5,6 +5,6 @@ namespace MakroChef.Agent.Catalog;
 /// come straight from get_my_food_restrictions (TASKS.md 4.1) and hard-exclude matching
 /// candidates rather than merely deprioritizing them.</summary>
 public record CandidatePoolRequest(
-    IReadOnlyList<string> SeedProductIds,
+    IReadOnlyDictionary<string, string> SeedSlugsById,
     IReadOnlyList<string> DeficitCategories,
     IReadOnlyList<string> RestrictedCategories);

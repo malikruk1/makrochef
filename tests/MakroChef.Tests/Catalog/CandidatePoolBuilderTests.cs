@@ -26,7 +26,7 @@ public class CandidatePoolBuilderTests
         var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
         var request = new CandidatePoolRequest(
-            SeedProductIds: ["yogurt_x", "cheese_a"],
+            SeedSlugsById: new Dictionary<string, string> { ["yogurt_x"] = "yogurt_x", ["cheese_a"] = "cheese_a" },
             DeficitCategories: ["сир", "риба", "яйця"],
             RestrictedCategories: []);
 
@@ -56,7 +56,7 @@ public class CandidatePoolBuilderTests
         var resolver = new ExactMcpNutritionResolver(mcpClient, StubSession.Default);
 
         var request = new CandidatePoolRequest(
-            SeedProductIds: [],
+            SeedSlugsById: new Dictionary<string, string>(),
             DeficitCategories: ["риба"],
             RestrictedCategories: ["риба"]);
 

@@ -12,26 +12,24 @@ namespace MakroChef.Agent.Catalog;
 /// worse both ways".
 ///
 /// Confirmed live (2026-09-14): get_product_details needs a slug + branchId/deliveryType/
-/// timeslot, not a bare productId - the guest's "usual" product needs its slug resolved via
-/// find_products_batch first (its id alone, e.g. from receipt history, isn't enough).
+/// timeslot, not a bare productId. **Correction, same day**: the slug does NOT need a separate
+/// find_products_batch lookup - silpo_find_products_batch's "products" parameter is a TEXT SEARCH
+/// (its own description: "semicolon-separated" search terms), not an id lookup, so passing a raw
+/// id there always returned zero matches and every "usual" product silently produced no swaps
+/// (BLOCKERS.md). The slug was already sitting in the guest's own order history
+/// (catalogProduct.slug per line item) - callers now resolve it there and pass it straight in.
 ///
 /// Confirmed live (2026-09-14) via the tool's real input schema: silpo_get_similar_products
 /// requires "slug" (not "productId") alongside branchId/deliveryType/timeslot - the previous call
 /// always failed MCP input validation, so no swap was ever actually surfaced.</summary>
 public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nutritionResolver, SessionContext session)
 {
-    public async Task<IReadOnlyList<ProductSwap>> GenerateAsync(IReadOnlyList<string> usualCartProductIds, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ProductSwap>> GenerateAsync(IReadOnlyDictionary<string, string> usualCartSlugsById, CancellationToken cancellationToken = default)
     {
         var swaps = new List<ProductSwap>();
 
-        foreach (var productId in usualCartProductIds)
+        foreach (var (productId, oldSlug) in usualCartSlugsById)
         {
-            var oldSlug = await ResolveSlugAsync(productId, cancellationToken);
-            if (oldSlug is null)
-            {
-                continue;
-            }
-
             ProductDetails oldDetails;
             NutrientInfo oldNutrients;
             try
@@ -94,23 +92,6 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
         return swaps;
     }
 
-    private async Task<string?> ResolveSlugAsync(string productId, CancellationToken cancellationToken)
-    {
-        var batchJson = await mcpClient.CallToolAsync(
-            "silpo_find_products_batch",
-            new Dictionary<string, object?>
-            {
-                ["branchId"] = session.BranchId,
-                ["deliveryType"] = session.DeliveryType,
-                ["timeslotStart"] = session.TimeslotStart,
-                ["timeslotEnd"] = session.TimeslotEnd,
-                ["products"] = new[] { productId },
-            },
-            cancellationToken);
-
-        return JsonFieldScanner.ExtractProductSlugs(batchJson).GetValueOrDefault(productId);
-    }
-
     private Task<string> GetProductDetailsAsync(string slug, CancellationToken cancellationToken) =>
         mcpClient.CallToolAsync(
             "silpo_get_product_details",
@@ -142,8 +123,15 @@ public class SwapGenerator(IMakroChefMcpClient mcpClient, INutritionResolver nut
             var sugarDelta = (newNutrients.SugarPer100g ?? 0) - (oldNutrients.SugarPer100g ?? 0);
             var priceDelta = newDetails.PriceKopecks - oldDetails.PriceKopecks;
 
-            var isImprovement = proteinDelta > 0 || sugarDelta < 0;
-            if (!isImprovement)
+            // Confirmed live (2026-09-14): requiring a strict macro improvement left swaps almost
+            // always empty - get_similar_products returns near-identical items (same brand/line),
+            // so a genuine protein/sugar delta is rare, and many products don't publish sugar at
+            // all (BLOCKERS.md). Now also surfaces a cheaper or on-promotion alternative, but only
+            // when it's not nutritionally worse - never trade macros away just to save money.
+            var nutritionNotWorse = proteinDelta >= 0 && sugarDelta <= 0;
+            var isNutritionImprovement = proteinDelta > 0 || sugarDelta < 0;
+            var isEconomicWin = (priceDelta < 0 || newDetails.OnPromotion) && nutritionNotWorse;
+            if (!isNutritionImprovement && !isEconomicWin)
             {
                 return null;
             }

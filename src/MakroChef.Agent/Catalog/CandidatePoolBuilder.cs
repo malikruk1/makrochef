@@ -36,24 +36,14 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
 {
     public async Task<IReadOnlyList<Candidate>> BuildAsync(CandidatePoolRequest request, CancellationToken cancellationToken = default)
     {
-        var slugsById = new Dictionary<string, string>();
+        // Confirmed live (2026-09-14): silpo_find_products_batch's "products" parameter is a TEXT
+        // SEARCH (its own description: "semicolon-separated" search terms), not an id lookup -
+        // resolving seed slugs through it always returned zero matches, so the guest's own
+        // purchase history never actually contributed a single real seed candidate (BLOCKERS.md).
+        // The caller now resolves these slugs directly from the order JSON itself and passes them
+        // straight in - no MCP call needed for this step at all.
+        var slugsById = new Dictionary<string, string>(request.SeedSlugsById);
         var categoryHintById = new Dictionary<string, string>();
-
-        if (request.SeedProductIds.Count > 0)
-        {
-            var batchJson = await mcpClient.CallToolAsync(
-                "silpo_find_products_batch",
-                new Dictionary<string, object?>
-                {
-                    ["branchId"] = session.BranchId,
-                    ["deliveryType"] = session.DeliveryType,
-                    ["timeslotStart"] = session.TimeslotStart,
-                    ["timeslotEnd"] = session.TimeslotEnd,
-                    ["products"] = request.SeedProductIds,
-                },
-                cancellationToken);
-            MergeSlugs(slugsById, batchJson);
-        }
 
         var categoryResolver = new CategoryResolver(mcpClient, session);
         foreach (var keyword in request.DeficitCategories)
@@ -105,14 +95,6 @@ public class CandidatePoolBuilder(IMakroChefMcpClient mcpClient, INutritionResol
 
         var resolved = await Task.WhenAll(tasks);
         return resolved.Where(c => c is not null).Select(c => c!).ToList();
-    }
-
-    private static void MergeSlugs(Dictionary<string, string> slugsById, string json)
-    {
-        foreach (var (id, slug) in JsonFieldScanner.ExtractProductSlugs(json))
-        {
-            slugsById[id] = slug;
-        }
     }
 
     private async Task<Candidate?> ResolveCandidateAsync(

@@ -42,13 +42,13 @@ public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver so
             nutritionResolver = new CachingNutritionResolver(nutritionResolver, db);
         }
 
-        var seedProductIds = await CollectSeedProductIdsAsync(session, cancellationToken);
+        var seedSlugsById = await CollectSeedSlugsAsync(session, cancellationToken);
         var deficitCategories = DeficitCategoryCandidates
             .Where(c => !profile.Restrictions.Contains(c, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
         var pool = await new CandidatePoolBuilder(mcpClient, nutritionResolver, session).BuildAsync(
-            new CandidatePoolRequest(seedProductIds, deficitCategories, profile.Restrictions),
+            new CandidatePoolRequest(seedSlugsById, deficitCategories, profile.Restrictions),
             cancellationToken);
 
         var norms = new TargetNormsCalculator().Compute(profile, medianDailyKcal: null);
@@ -67,7 +67,12 @@ public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver so
         return new BasketPlanResult(session, norms, coverage, pool.Count, baselineWeeklyCostKopecks, request, result);
     }
 
-    private async Task<List<string>> CollectSeedProductIdsAsync(Domain.Cart.SessionContext session, CancellationToken cancellationToken)
+    // Confirmed live (2026-09-14): silpo_find_products_batch's "products" parameter is a TEXT
+    // SEARCH (its own description: "semicolon-separated" search terms), not an id lookup - the
+    // slug this used to fetch via a separate batch call never actually resolved (BLOCKERS.md).
+    // The slug already lives in the order JSON itself (catalogProduct.slug per line item), so no
+    // extra MCP call is needed here at all.
+    private async Task<IReadOnlyDictionary<string, string>> CollectSeedSlugsAsync(Domain.Cart.SessionContext session, CancellationToken cancellationToken)
     {
         var sessionArgs = new Dictionary<string, object?>
         {
@@ -80,9 +85,12 @@ public class BasketPlanner(IMakroChefMcpClient mcpClient, LoggingBasketSolver so
         var offlineJson = await mcpClient.CallToolAsync("silpo_get_my_offline_orders", sessionArgs, cancellationToken);
         var onlineJson = await mcpClient.CallToolAsync("silpo_get_my_online_orders", sessionArgs, cancellationToken);
 
-        var ids = new HashSet<string>();
-        ids.UnionWith(JsonFieldScanner.ExtractProductIds(offlineJson));
-        ids.UnionWith(JsonFieldScanner.ExtractProductIds(onlineJson));
-        return ids.ToList();
+        var slugsById = new Dictionary<string, string>(JsonFieldScanner.ExtractProductSlugs(offlineJson));
+        foreach (var (id, slug) in JsonFieldScanner.ExtractProductSlugs(onlineJson))
+        {
+            slugsById.TryAdd(id, slug);
+        }
+
+        return slugsById;
     }
 }

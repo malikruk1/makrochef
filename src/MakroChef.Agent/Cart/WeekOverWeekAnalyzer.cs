@@ -51,18 +51,16 @@ public class WeekOverWeekAnalyzer(IMakroChefMcpClient mcpClient)
         }
 
         var uniqueProductIds = items.Select(i => i.ProductId).Distinct().ToList();
-        var batchJson = await mcpClient.CallToolAsync(
-            "silpo_find_products_batch",
-            new Dictionary<string, object?>
-            {
-                ["branchId"] = session.BranchId,
-                ["deliveryType"] = session.DeliveryType,
-                ["timeslotStart"] = session.TimeslotStart,
-                ["timeslotEnd"] = session.TimeslotEnd,
-                ["products"] = uniqueProductIds,
-            },
-            cancellationToken);
-        var slugsById = JsonFieldScanner.ExtractProductSlugs(batchJson);
+        // Confirmed live (2026-09-14): silpo_find_products_batch's "products" parameter is a TEXT
+        // SEARCH (its own description: "semicolon-separated" search terms), not an id lookup -
+        // this always returned zero matches, so proteinPer100gById silently stayed empty and every
+        // week's "consumed" protein was always 0 (BLOCKERS.md). The slug already lives in the
+        // order JSON itself (catalogProduct.slug per line item) - no extra MCP call needed.
+        var slugsById = new Dictionary<string, string>(JsonFieldScanner.ExtractProductSlugs(offlineJson));
+        foreach (var (id, slug) in JsonFieldScanner.ExtractProductSlugs(onlineJson))
+        {
+            slugsById.TryAdd(id, slug);
+        }
 
         var proteinPer100gById = new Dictionary<string, decimal>();
         foreach (var productId in uniqueProductIds)
