@@ -79,13 +79,25 @@ builder.Services.AddSingleton<BasketSolver>();
 
 var app = builder.Build();
 
+// Applies pending EF Core migrations automatically on startup - the deployed environment has no
+// interactive shell to run `dotnet ef database update` by hand, unlike local dev.
+using (var migrationScope = app.Services.CreateScope())
+{
+    await migrationScope.ServiceProvider.GetRequiredService<MakroChefDbContext>().Database.MigrateAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Most PaaS hosts (Railway/Render/Fly) terminate TLS at their own edge proxy and forward plain
+// HTTP internally - redirecting to https here would just break behind that proxy in production.
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 var webDir = Path.Combine(MakroChef.Api.RepoPaths.FindRoot(), "web");
 if (Directory.Exists(webDir))
