@@ -195,7 +195,8 @@ public static class StubTools
     public static string AddOrUpdateCertificates(object? certificatesToAdd = null) { StubCartState.CheckoutReady = true; return """{"success":true}"""; }
 
     [McpServerTool(Name = "silpo_get_promo_codes"), Description("Stub fixture for gate 7.3.")]
-    public static string GetPromoCodes() => """[{"code":"SAVE5","discountAmount":5},{"code":"SAVE20","discountAmount":20}]""";
+    // Real shape (confirmed live 2026-09-14): wrapped in "promoCodes", not a bare array.
+    public static string GetPromoCodes() => """{"success":true,"promoCodes":[{"code":"SAVE5","discountAmount":5},{"code":"SAVE20","discountAmount":20}]}""";
 
     [McpServerTool(Name = "silpo_update_shopping_cart"), Description("Stub cart for gate 7.3.")]
     public static string UpdateShoppingCart() => """{"success":true}""";

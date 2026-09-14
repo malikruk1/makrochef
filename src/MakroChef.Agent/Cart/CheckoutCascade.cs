@@ -159,10 +159,20 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
         return barcodes;
     }
 
+    // Confirmed live (2026-09-14): silpo_get_promo_codes wraps its array as
+    // {"success":true,"promoCodes":[...],"meta":{...}}, not a bare array as originally assumed -
+    // ExtractBestPromoCode always returned null against a real response, so a promo code would
+    // never actually get applied even when one was available.
     private static string? ExtractBestPromoCode(string json)
     {
         var root = JsonDocument.Parse(json).RootElement;
-        if (root.ValueKind != JsonValueKind.Array)
+        var array = root.ValueKind == JsonValueKind.Array
+            ? root
+            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("promoCodes", out var p) && p.ValueKind == JsonValueKind.Array
+                ? p
+                : (JsonElement?)null;
+
+        if (array is null)
         {
             return null;
         }
@@ -170,7 +180,7 @@ public class CheckoutCascade(IMakroChefMcpClient mcpClient, SessionContext sessi
         string? bestCode = null;
         decimal bestDiscount = -1;
 
-        foreach (var element in root.EnumerateArray())
+        foreach (var element in array.Value.EnumerateArray())
         {
             if (element.ValueKind != JsonValueKind.Object)
             {
