@@ -1,4 +1,5 @@
-const SCREENS = ["1", "2", "3", "4", "5", "6"];
+const SCREENS = ["1", "2", "3", "4", "5", "6", "7"];
+const TRACE_SESSION_ID = "00000000-0000-0000-0000-000000000001"; // matches API's DEV_USER_ID default
 const STATES = ["data", "live", "empty", "loading", "error"];
 let currentScreen = "1";
 let currentState = "data";
@@ -65,6 +66,10 @@ async function renderLive(screenId) {
 
   if (screenId === "6") {
     return renderLiveWeekOverWeek();
+  }
+
+  if (screenId === "7") {
+    return renderLiveTrace();
   }
 
   if (screenId !== "2") {
@@ -389,6 +394,53 @@ async function renderLiveWeekOverWeek() {
       Наближено: кожна позиція в чеку рахується як ~100г (реальна вага з get_product_details ще не
       підтягується для історичних покупок — надто багато MCP-викликів на весь чек).
     </p>
+  `;
+}
+
+// TASKS.md 8.3: real McpCalls trace for the dev session, oldest first. Two rows carry the pitch -
+// a repeated "solver.solve" (the 7.2 reoptimization re-solve) and any out-of-stock validation - so
+// both get a distinct highlighted style instead of blending into the log.
+async function renderLiveTrace() {
+  const res = await fetch(`/api/trace/${TRACE_SESSION_ID}`);
+  if (!res.ok) {
+    const problem = await res.json().catch(() => null);
+    throw new Error(problem?.detail ?? "request failed");
+  }
+  const calls = await res.json();
+
+  if (calls.length === 0) {
+    return `<div class="state-empty">Ще немає жодного зафіксованого MCP-виклику в цій сесії.</div>`;
+  }
+
+  // The session accumulates across every dev run/reload - only the tail is relevant to a demo,
+  // but "in order" (the gate's requirement) is preserved by slicing off the front, not sorting.
+  const MAX_ROWS = 300;
+  const shown = calls.length > MAX_ROWS ? calls.slice(calls.length - MAX_ROWS) : calls;
+
+  let solveSeen = 0;
+
+  const rows = shown.map(c => {
+    const isRepeatedSolve = c.tool === "solver.solve" && ++solveSeen > 1;
+    const isOutOfStock = c.status.toLowerCase().includes("out_of_stock") || c.status.toLowerCase().includes("infeasible");
+    const highlighted = isRepeatedSolve || isOutOfStock;
+    const time = new Date(c.createdAt).toLocaleTimeString("uk-UA");
+    return `
+      <div class="trace-row${highlighted ? " trace-row-highlight" : ""}">
+        <span class="trace-time">${time}</span>
+        <span class="trace-tool">${c.tool}</span>
+        <span class="trace-status">${c.status}</span>
+        <span class="trace-duration">${c.durationMs} ms</span>
+      </div>`;
+  }).join("");
+
+  const truncNote = calls.length > MAX_ROWS
+    ? `<p style="font-size:11px;color:var(--text-muted)">Показано останні ${MAX_ROWS} з ${calls.length}.</p>`
+    : "";
+
+  return `
+    <h1 class="app-title">Трейс MCP-викликів (${calls.length})</h1>
+    ${truncNote}
+    <div class="trace-log">${rows}</div>
   `;
 }
 

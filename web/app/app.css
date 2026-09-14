@@ -146,3 +146,27 @@ h1.app-title { font-size: 15px; font-weight: 500; margin: 0 0 16px; }
 .skeleton { background: linear-gradient(90deg, var(--border-card) 25%, var(--card) 50%, var(--border-card) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: var(--r-card); height: 56px; margin-bottom: 12px; }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .retry-btn { margin-top: 12px; height: 44px; padding: 0 16px; border-radius: var(--r-btn); border: 1px solid var(--border-card); background: var(--card); color: var(--text); cursor: pointer; }
+
+/* ---- trace log (TASKS.md 8.3, dark theme only) ---- */
+#screen-7 { background: var(--bg); color: var(--text); }
+.trace-log { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 11px; }
+.trace-row {
+  display: grid;
+  grid-template-columns: 64px 1fr auto auto;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-card);
+  color: var(--text-2);
+  align-items: center;
+}
+.trace-time { color: var(--text-muted); }
+.trace-tool { color: var(--text); overflow-wrap: anywhere; }
+.trace-status { color: var(--text-muted); }
+.trace-duration { color: var(--text-muted); text-align: right; }
+.trace-row-highlight {
+  background: var(--accent-plate);
+  color: var(--on-plate);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+}
+.trace-row-highlight .trace-tool, .trace-row-highlight .trace-status, .trace-row-highlight .trace-time, .trace-row-highlight .trace-duration { color: var(--on-plate); }
